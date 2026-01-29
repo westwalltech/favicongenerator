@@ -1,0 +1,13 @@
+{
+    "name": "favicon-generator",
+    "private": true,
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build"
+    },
+    "devDependencies": {
+        "@statamic/cms": "file:../../../vendor/statamic/cms/packages/cms",
+        "laravel-vite-plugin": "^2",
+        "vite": "^7.0.0"
+    }
+}

@@ -1,0 +1,66 @@
+{
+    "name": "westwalltech/favicon-generator",
+    "description": "Modern favicon generator for Statamic 6 with dark mode SVG and PWA manifest support",
+    "version": "1.0.0",
+    "keywords": ["statamic", "favicon", "pwa", "webmanifest", "statamic-addon", "dark-mode"],
+    "license": "MIT",
+    "type": "statamic-addon",
+    "homepage": "https://github.com/westwalltech/favicongenerator",
+    "authors": [
+        {
+            "name": "West Wall Technologies",
+            "email": "hello@westwalltech.com",
+            "homepage": "https://westwalltech.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/westwalltech/favicongenerator/issues",
+        "source": "https://github.com/westwalltech/favicongenerator"
+    },
+    "require": {
+        "php": "^8.5",
+        "statamic/cms": "^6.0",
+        "intervention/image-laravel": "^1.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "WestWallTech\\FaviconGenerator\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "WestWallTech\\FaviconGenerator\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test:coverage": "pest --coverage",
+        "lint": "pint --test",
+        "lint:fix": "pint"
+    },
+    "extra": {
+        "statamic": {
+            "name": "Favicon Generator",
+            "description": "Modern favicon generator with dark mode SVG and PWA manifest"
+        },
+        "laravel": {
+            "providers": [
+                "WestWallTech\\FaviconGenerator\\ServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": {
+            "pixelfear/composer-dist-plugin": true,
+            "pestphp/pest-plugin": true
+        }
+    }
+}
