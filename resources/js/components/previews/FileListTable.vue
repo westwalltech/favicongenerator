@@ -24,7 +24,7 @@
                             <img
                                 v-if="file.type === 'image'"
                                 :src="file.url + '?v=' + file.modified"
-                                class="max-w-full max-h-full object-contain"
+                                class="w-full h-full object-contain"
                                 :alt="file.name"
                             />
                             <svg v-else class="w-5 h-5 text-gray-400 dark:text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
