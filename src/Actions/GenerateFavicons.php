@@ -57,6 +57,12 @@ class GenerateFavicons
     {
         $outputPath = config('favicon-generator.output_path', public_path());
         $isSvgSource = strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION)) === 'svg';
+        $sourceType = $options['source_type'] ?? 'asset';
+
+        // For emoji/text sources, we need special handling
+        if ($sourceType === 'emoji' || $sourceType === 'text') {
+            return $this->generateFromEmojiOrText($sourcePath, $outputPath, $options);
+        }
 
         // Load image - use Imagick for SVG, Intervention for raster
         if ($isSvgSource && $this->hasImagick) {
@@ -84,6 +90,639 @@ class GenerateFavicons
         $generatedFiles[] = $this->generateWebManifest($outputPath, $options);
 
         return $generatedFiles;
+    }
+
+    /**
+     * Generate favicons from emoji or text source.
+     */
+    protected function generateFromEmojiOrText(string $svgSourcePath, string $outputPath, array $options): array
+    {
+        $generatedFiles = [];
+        $sourceType = $options['source_type'];
+        $isEmoji = $sourceType === 'emoji';
+
+        // For emoji, try to fetch Twemoji SVG for consistent appearance across all formats
+        $twemojiSvg = null;
+        $baseImage = null;
+
+        if ($isEmoji) {
+            $emoji = $options['source_emoji'] ?? '';
+            $twemojiSvg = $this->fetchTwemojiSvg($emoji);
+
+            if ($twemojiSvg) {
+                // Use Twemoji SVG for favicon.svg
+                $generatedFiles[] = $this->generateTwemojiSvgFavicon($twemojiSvg, $outputPath, $options);
+                // Create base image from Twemoji
+                $baseImage = $this->createEmojiImageFromSvg($twemojiSvg, $options, 512);
+            } else {
+                // Fallback to text-based SVG
+                $generatedFiles[] = $this->generateSvgFavicon($svgSourcePath, $outputPath, $options, true);
+                $baseImage = $this->createEmojiImage($options, 512);
+            }
+        } else {
+            // Text mode - use the text-based SVG
+            $generatedFiles[] = $this->generateSvgFavicon($svgSourcePath, $outputPath, $options, true);
+            $baseImage = $this->createTextImage($options, 512);
+        }
+
+        // Generate PNG files
+        foreach (self::PNG_SIZES as $spec) {
+            $generatedFiles[] = $this->generatePng($baseImage, $spec['size'], $outputPath.'/'.$spec['name'], $options);
+        }
+
+        // Generate maskable icons
+        foreach (self::MASKABLE_SIZES as $spec) {
+            $generatedFiles[] = $this->generateMaskableIcon($baseImage, $spec['size'], $outputPath.'/'.$spec['name'], $options);
+        }
+
+        $generatedFiles[] = $this->generateIcoFile($baseImage, $outputPath, $options);
+        $generatedFiles[] = $this->generateWebManifest($outputPath, $options);
+
+        return $generatedFiles;
+    }
+
+    /**
+     * Create an image from emoji using Twemoji.
+     */
+    protected function createEmojiImage(array $options, int $size): ImageInterface
+    {
+        $emoji = $options['source_emoji'] ?? '';
+        $bgColor = ($options['png_transparent'] ?? true) ? 'transparent' : ($options['png_background'] ?? '#ffffff');
+        $isTransparent = $bgColor === 'transparent';
+
+        // Try to fetch emoji from Twemoji
+        $emojiImage = $this->fetchTwemojiImage($emoji);
+
+        if ($emojiImage) {
+            // Successfully got Twemoji image
+            $baseImage = $emojiImage;
+        } else {
+            // Fallback: create a simple colored square as placeholder
+            $baseImage = $this->createFallbackEmojiImage($size, $options);
+        }
+
+        // Apply background if not transparent
+        if (! $isTransparent && $this->hasImagick) {
+            $baseImage = $this->applyBackgroundToImage($baseImage, $size, $bgColor);
+        }
+
+        // Apply padding if specified
+        $padding = $options['icon_padding'] ?? 0;
+        if ($padding > 0) {
+            $baseImage = $this->applyPaddingToInterventionImage($baseImage, $size, $padding, $bgColor);
+        }
+
+        return $baseImage;
+    }
+
+    /**
+     * Fetch emoji image from Twemoji CDN.
+     */
+    protected function fetchTwemojiImage(string $emoji): ?ImageInterface
+    {
+        // Convert emoji to Twemoji codepoint format
+        $codepoints = [];
+        $length = mb_strlen($emoji);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = mb_substr($emoji, $i, 1);
+            $ord = mb_ord($char);
+
+            // Skip variation selectors (FE0E, FE0F)
+            if ($ord === 0xFE0E || $ord === 0xFE0F) {
+                continue;
+            }
+
+            $codepoints[] = dechex($ord);
+        }
+
+        if (empty($codepoints)) {
+            return null;
+        }
+
+        $codepointStr = implode('-', $codepoints);
+
+        // Try to fetch SVG from Twemoji CDN
+        $svgUrl = "https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/{$codepointStr}.svg";
+
+        try {
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 5,
+                    'user_agent' => 'FaviconGenerator/1.0',
+                ],
+            ]);
+
+            $svgContent = @file_get_contents($svgUrl, false, $context);
+
+            if ($svgContent === false) {
+                return null;
+            }
+
+            // Convert SVG to PNG using Imagick
+            if ($this->hasImagick) {
+                return $this->convertSvgToImage($svgContent, 512);
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Fetch emoji SVG content from Twemoji CDN.
+     */
+    protected function fetchTwemojiSvg(string $emoji): ?string
+    {
+        $codepoints = [];
+        $length = mb_strlen($emoji);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = mb_substr($emoji, $i, 1);
+            $ord = mb_ord($char);
+
+            // Skip variation selectors (FE0E, FE0F)
+            if ($ord === 0xFE0E || $ord === 0xFE0F) {
+                continue;
+            }
+
+            $codepoints[] = dechex($ord);
+        }
+
+        if (empty($codepoints)) {
+            return null;
+        }
+
+        $codepointStr = implode('-', $codepoints);
+        $svgUrl = "https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/{$codepointStr}.svg";
+
+        try {
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 5,
+                    'user_agent' => 'FaviconGenerator/1.0',
+                ],
+            ]);
+
+            $svgContent = @file_get_contents($svgUrl, false, $context);
+
+            return $svgContent !== false ? $svgContent : null;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Generate favicon.svg from Twemoji SVG content.
+     */
+    protected function generateTwemojiSvgFavicon(string $twemojiSvg, string $outputPath, array $options): string
+    {
+        $svgPath = $outputPath.'/favicon.svg';
+
+        $pngTransparent = ($options['png_transparent'] ?? true);
+        $padding = $options['icon_padding'] ?? 0;
+
+        // Extract viewBox dimensions
+        if (preg_match('/viewBox=["\']([^"\']+)["\']/', $twemojiSvg, $matches)) {
+            $viewBox = array_map('floatval', preg_split('/[\s,]+/', trim($matches[1])));
+            $width = $viewBox[2] ?? 36;
+            $height = $viewBox[3] ?? 36;
+        } else {
+            $width = 36;
+            $height = 36;
+        }
+
+        $css = '';
+        $bgRect = '';
+
+        // Add background if not transparent
+        if (! $pngTransparent) {
+            $bgColor = $options['png_background'] ?? '#ffffff';
+            $darkBgColor = $options['png_dark_background'] ?? '#1a1a1a';
+            $css = ".favicon-bg { fill: {$bgColor}; } @media (prefers-color-scheme: dark) { .favicon-bg { fill: {$darkBgColor}; } }";
+            $bgRect = "<rect class=\"favicon-bg\" x=\"0\" y=\"0\" width=\"{$width}\" height=\"{$height}\"/>";
+        }
+
+        // Apply padding by wrapping content in a scaled/translated group
+        if ($padding > 0) {
+            $paddingFraction = $padding / 100;
+            $scale = 1 - ($paddingFraction * 2);
+            $translateX = $width * $paddingFraction;
+            $translateY = $height * $paddingFraction;
+
+            // Extract the inner content (everything after <svg...>)
+            if (preg_match('/(<svg[^>]*>)(.*?)(<\/svg>)/is', $twemojiSvg, $contentMatches)) {
+                $svgOpen = $contentMatches[1];
+                $innerContent = $contentMatches[2];
+                $svgClose = $contentMatches[3];
+
+                $groupOpen = "<g transform=\"translate({$translateX},{$translateY}) scale({$scale})\">";
+                $groupClose = '</g>';
+
+                $styleTag = $css ? "<style>{$css}</style>" : '';
+                $twemojiSvg = $svgOpen.$styleTag.$bgRect.$groupOpen.$innerContent.$groupClose.$svgClose;
+            }
+        } elseif ($css || $bgRect) {
+            // No padding but need to add style/background
+            $twemojiSvg = preg_replace(
+                '/(<svg[^>]*>)/i',
+                '$1<style>'.$css.'</style>'.$bgRect,
+                $twemojiSvg,
+                1
+            );
+        }
+
+        file_put_contents($svgPath, $twemojiSvg);
+
+        return $svgPath;
+    }
+
+    /**
+     * Create base image from Twemoji SVG content.
+     */
+    protected function createEmojiImageFromSvg(string $svgContent, array $options, int $size): ImageInterface
+    {
+        $bgColor = ($options['png_transparent'] ?? true) ? 'transparent' : ($options['png_background'] ?? '#ffffff');
+        $isTransparent = $bgColor === 'transparent';
+
+        // Convert SVG to image
+        $baseImage = $this->convertSvgToImage($svgContent, $size);
+
+        if (! $baseImage) {
+            // Fallback to placeholder
+            return $this->createFallbackEmojiImage($size, $options);
+        }
+
+        // Apply background if not transparent
+        if (! $isTransparent && $this->hasImagick) {
+            $baseImage = $this->applyBackgroundToImage($baseImage, $size, $bgColor);
+        }
+
+        // Apply padding if specified
+        $padding = $options['icon_padding'] ?? 0;
+        if ($padding > 0) {
+            $baseImage = $this->applyPaddingToInterventionImage($baseImage, $size, $padding, $bgColor);
+        }
+
+        return $baseImage;
+    }
+
+    /**
+     * Convert SVG content to Intervention Image.
+     */
+    protected function convertSvgToImage(string $svgContent, int $size): ?ImageInterface
+    {
+        try {
+            $imagick = new Imagick();
+            $imagick->setBackgroundColor(new \ImagickPixel('transparent'));
+            $imagick->setResolution(300, 300);
+            $imagick->readImageBlob($svgContent);
+            $imagick->setImageFormat('png32');
+
+            // Resize to desired size
+            $imagick->resizeImage($size, $size, Imagick::FILTER_LANCZOS, 1);
+
+            $tempPath = sys_get_temp_dir().'/twemoji-'.uniqid().'.png';
+            $imagick->writeImage($tempPath);
+            $imagick->destroy();
+
+            $image = Image::read($tempPath);
+            unlink($tempPath);
+
+            return $image;
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Create a fallback image when emoji can't be rendered.
+     */
+    protected function createFallbackEmojiImage(int $size, array $options): ImageInterface
+    {
+        $bgColor = ($options['png_transparent'] ?? true) ? 'transparent' : ($options['png_background'] ?? '#ffffff');
+        $themeColor = $options['theme_color'] ?? '#4f46e5';
+
+        $image = imagecreatetruecolor($size, $size);
+        imagesavealpha($image, true);
+
+        if ($bgColor === 'transparent') {
+            $bg = imagecolorallocatealpha($image, 255, 255, 255, 127);
+        } else {
+            $rgb = $this->hexToRgb($bgColor);
+            $bg = imagecolorallocate($image, $rgb['r'], $rgb['g'], $rgb['b']);
+        }
+        imagefill($image, 0, 0, $bg);
+
+        // Draw a colored circle as placeholder
+        $themeRgb = $this->hexToRgb($themeColor);
+        $circleColor = imagecolorallocate($image, $themeRgb['r'], $themeRgb['g'], $themeRgb['b']);
+
+        $centerX = $size / 2;
+        $centerY = $size / 2;
+        $radius = $size * 0.35;
+
+        imagefilledellipse($image, (int) $centerX, (int) $centerY, (int) ($radius * 2), (int) ($radius * 2), $circleColor);
+
+        $tempPath = sys_get_temp_dir().'/emoji-fallback-'.uniqid().'.png';
+        imagepng($image, $tempPath);
+        imagedestroy($image);
+
+        $interventionImage = Image::read($tempPath);
+        unlink($tempPath);
+
+        return $interventionImage;
+    }
+
+    /**
+     * Apply background color to an image.
+     */
+    protected function applyBackgroundToImage(ImageInterface $image, int $size, string $bgColor): ImageInterface
+    {
+        $tempPath = sys_get_temp_dir().'/favicon-temp-'.uniqid().'.png';
+        $image->toPng()->save($tempPath);
+
+        $imagick = new Imagick($tempPath);
+
+        $canvas = new Imagick();
+        $canvas->newImage($size, $size, new \ImagickPixel($bgColor));
+        $canvas->setImageFormat('png32');
+
+        // Resize source to fit
+        $imagick->resizeImage($size, $size, Imagick::FILTER_LANCZOS, 1);
+
+        // Composite the emoji on top
+        $canvas->compositeImage($imagick, Imagick::COMPOSITE_OVER, 0, 0);
+
+        $canvas->writeImage($tempPath);
+        $imagick->destroy();
+        $canvas->destroy();
+
+        $result = Image::read($tempPath);
+        unlink($tempPath);
+
+        return $result;
+    }
+
+    /**
+     * Apply padding to an Intervention Image.
+     */
+    protected function applyPaddingToInterventionImage(ImageInterface $image, int $size, int $paddingPercent, string $bgColor): ImageInterface
+    {
+        $paddingFraction = $paddingPercent / 100;
+        $innerSize = (int) round($size * (1 - $paddingFraction * 2));
+        $offset = (int) (($size - $innerSize) / 2);
+
+        $tempPath = sys_get_temp_dir().'/favicon-pad-'.uniqid().'.png';
+        $image->toPng()->save($tempPath);
+
+        $imagick = new Imagick($tempPath);
+        $imagick->resizeImage($innerSize, $innerSize, Imagick::FILTER_LANCZOS, 1);
+
+        $canvas = new Imagick();
+        $bgPixel = $bgColor === 'transparent' ? 'transparent' : $bgColor;
+        $canvas->newImage($size, $size, new \ImagickPixel($bgPixel));
+        $canvas->setImageFormat('png32');
+
+        $canvas->compositeImage($imagick, Imagick::COMPOSITE_OVER, $offset, $offset);
+
+        $canvas->writeImage($tempPath);
+        $imagick->destroy();
+        $canvas->destroy();
+
+        $result = Image::read($tempPath);
+        unlink($tempPath);
+
+        return $result;
+    }
+
+    /**
+     * Create an image with text using GD library.
+     */
+    protected function createTextImage(array $options, int $size): ImageInterface
+    {
+        $sourceType = $options['source_type'];
+        $isEmoji = $sourceType === 'emoji';
+        $content = $isEmoji ? ($options['source_emoji'] ?? '') : ($options['source_text'] ?? '');
+
+        // Determine colors
+        if ($isEmoji) {
+            $bgColor = ($options['png_transparent'] ?? true) ? 'transparent' : ($options['png_background'] ?? '#ffffff');
+            $textColor = '#000000';
+        } else {
+            $bgColor = $options['text_background_color'] ?? $options['theme_color'] ?? '#4f46e5';
+            $textColor = $options['text_color'] ?? '#ffffff';
+        }
+
+        // Parse colors
+        $bgRgb = $this->hexToRgb($bgColor === 'transparent' ? '#ffffff' : $bgColor);
+        $textRgb = $this->hexToRgb($textColor);
+        $isTransparent = $bgColor === 'transparent';
+
+        // Create GD image
+        $image = imagecreatetruecolor($size, $size);
+        imagesavealpha($image, true);
+
+        if ($isTransparent) {
+            $bg = imagecolorallocatealpha($image, 255, 255, 255, 127);
+        } else {
+            $bg = imagecolorallocate($image, $bgRgb['r'], $bgRgb['g'], $bgRgb['b']);
+        }
+        imagefill($image, 0, 0, $bg);
+
+        $textColorAlloc = imagecolorallocate($image, $textRgb['r'], $textRgb['g'], $textRgb['b']);
+
+        // Find a font
+        $fontPath = $this->findTtfFont($isEmoji, $options['text_font'] ?? 'system-ui', $options['text_weight'] ?? 'bold');
+
+        if ($fontPath && ! $isEmoji) {
+            // Use TrueType font for text
+            $charCount = mb_strlen($content);
+            $fontSize = match (true) {
+                $charCount === 1 => $size * 0.55,
+                $charCount === 2 => $size * 0.42,
+                $charCount === 3 => $size * 0.32,
+                default => $size * 0.25,
+            };
+
+            // Calculate text bounding box for centering
+            $bbox = imagettfbbox($fontSize, 0, $fontPath, $content);
+            $textWidth = abs($bbox[4] - $bbox[0]);
+            $textHeight = abs($bbox[5] - $bbox[1]);
+
+            $x = ($size - $textWidth) / 2;
+            $y = ($size + $textHeight) / 2;
+
+            imagettftext($image, $fontSize, 0, (int) $x, (int) $y, $textColorAlloc, $fontPath, $content);
+        } else {
+            // Fallback: use built-in GD font (limited but works everywhere)
+            // GD's built-in fonts don't support emoji well, so for emoji we'll create a colored square
+            if ($isEmoji) {
+                // For emoji, create a distinctive colored image since GD can't render emoji
+                // The SVG will still have the emoji, this is just for PNG fallback
+                $emojiColor = imagecolorallocate($image, 255, 200, 100);
+                imagefilledrectangle($image, $size / 4, $size / 4, $size * 3 / 4, $size * 3 / 4, $emojiColor);
+            } else {
+                // Use the largest built-in font
+                $font = 5;
+                $fontWidth = imagefontwidth($font);
+                $fontHeight = imagefontheight($font);
+                $textWidth = strlen($content) * $fontWidth;
+
+                $x = ($size - $textWidth) / 2;
+                $y = ($size - $fontHeight) / 2;
+
+                imagestring($image, $font, (int) $x, (int) $y, $content, $textColorAlloc);
+            }
+        }
+
+        // Apply padding if specified
+        $padding = $options['icon_padding'] ?? 0;
+        if ($padding > 0) {
+            $image = $this->applyPaddingToGdImage($image, $size, $padding, $bgColor);
+        }
+
+        // Save to temp file and convert to Intervention Image
+        $tempPath = sys_get_temp_dir().'/favicon-text-img-'.uniqid().'.png';
+        imagepng($image, $tempPath);
+        imagedestroy($image);
+
+        $interventionImage = Image::read($tempPath);
+        unlink($tempPath);
+
+        return $interventionImage;
+    }
+
+    /**
+     * Convert hex color to RGB array.
+     */
+    protected function hexToRgb(string $hex): array
+    {
+        $hex = ltrim($hex, '#');
+
+        return [
+            'r' => hexdec(substr($hex, 0, 2)),
+            'g' => hexdec(substr($hex, 2, 2)),
+            'b' => hexdec(substr($hex, 4, 2)),
+        ];
+    }
+
+    /**
+     * Apply padding to a GD image.
+     */
+    protected function applyPaddingToGdImage($image, int $size, int $paddingPercent, string $bgColor)
+    {
+        $paddingFraction = $paddingPercent / 100;
+        $innerSize = (int) round($size * (1 - $paddingFraction * 2));
+        $offset = (int) (($size - $innerSize) / 2);
+
+        // Create new canvas
+        $canvas = imagecreatetruecolor($size, $size);
+        imagesavealpha($canvas, true);
+
+        $bgRgb = $this->hexToRgb($bgColor === 'transparent' ? '#ffffff' : $bgColor);
+        if ($bgColor === 'transparent') {
+            $bg = imagecolorallocatealpha($canvas, 255, 255, 255, 127);
+        } else {
+            $bg = imagecolorallocate($canvas, $bgRgb['r'], $bgRgb['g'], $bgRgb['b']);
+        }
+        imagefill($canvas, 0, 0, $bg);
+
+        // Resize original and copy to canvas
+        $resized = imagecreatetruecolor($innerSize, $innerSize);
+        imagesavealpha($resized, true);
+        imagealphablending($resized, false);
+        imagecopyresampled($resized, $image, 0, 0, 0, 0, $innerSize, $innerSize, $size, $size);
+
+        imagealphablending($canvas, true);
+        imagecopy($canvas, $resized, $offset, $offset, 0, 0, $innerSize, $innerSize);
+
+        imagedestroy($image);
+        imagedestroy($resized);
+
+        return $canvas;
+    }
+
+    /**
+     * Find a TrueType font file.
+     */
+    protected function findTtfFont(bool $isEmoji, string $fontFamily, string $fontWeight): ?string
+    {
+        // Common font directories
+        $fontDirs = [
+            '/System/Library/Fonts',
+            '/System/Library/Fonts/Supplemental',
+            '/Library/Fonts',
+            '/usr/share/fonts/truetype',
+            '/usr/share/fonts',
+            '/usr/local/share/fonts',
+        ];
+
+        // For emoji, we can't really use TTF fonts with GD, so return null
+        if ($isEmoji) {
+            return null;
+        }
+
+        // Text mode - look for appropriate fonts (only .ttf, not .ttc)
+        $fontPatterns = match ($fontFamily) {
+            'serif' => ['Times*.ttf', 'Georgia*.ttf', 'DejaVuSerif*.ttf', 'LiberationSerif*.ttf'],
+            'monospace' => ['Courier*.ttf', 'DejaVuSansMono*.ttf', 'LiberationMono*.ttf'],
+            default => ['Arial*.ttf', 'Helvetica*.ttf', 'DejaVuSans.ttf', 'DejaVuSans-Bold.ttf', 'LiberationSans*.ttf', 'Roboto*.ttf'],
+        };
+
+        // Prefer bold variants if weight is bold
+        if ($fontWeight === 'bold') {
+            $boldPatterns = ['*Bold*.ttf', '*-Bold.ttf'];
+            $fontPatterns = array_merge($boldPatterns, $fontPatterns);
+        }
+
+        foreach ($fontDirs as $dir) {
+            if (! is_dir($dir)) {
+                continue;
+            }
+
+            foreach ($fontPatterns as $pattern) {
+                $matches = glob($dir.'/'.$pattern);
+                if (! empty($matches)) {
+                    // Filter to only .ttf files (not .ttc)
+                    foreach ($matches as $match) {
+                        if (strtolower(pathinfo($match, PATHINFO_EXTENSION)) === 'ttf') {
+                            return $match;
+                        }
+                    }
+                }
+
+                // Also check subdirectories
+                $matches = glob($dir.'/*/'.$pattern);
+                if (! empty($matches)) {
+                    foreach ($matches as $match) {
+                        if (strtolower(pathinfo($match, PATHINFO_EXTENSION)) === 'ttf') {
+                            return $match;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Final fallback - find any .ttf file
+        foreach ($fontDirs as $dir) {
+            if (! is_dir($dir)) {
+                continue;
+            }
+
+            $matches = glob($dir.'/*.ttf');
+            if (! empty($matches)) {
+                return $matches[0];
+            }
+
+            $matches = glob($dir.'/*/*.ttf');
+            if (! empty($matches)) {
+                return $matches[0];
+            }
+        }
+
+        return null;
     }
 
     /**

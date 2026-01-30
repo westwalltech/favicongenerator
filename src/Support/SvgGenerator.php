@@ -311,4 +311,93 @@ SVG;
             default => 'image/png',
         };
     }
+
+    /**
+     * Generate an SVG from an emoji character.
+     */
+    public function generateFromEmoji(string $emoji, array $options = []): string
+    {
+        $backgroundColor = $options['emoji_background'] ?? 'transparent';
+        $hasBackground = $backgroundColor !== 'transparent';
+
+        // Emoji font stack for cross-platform support
+        $fontFamily = 'Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif';
+
+        $bgRect = $hasBackground
+            ? '<rect class="favicon-bg" x="0" y="0" width="100" height="100" fill="'.htmlspecialchars($backgroundColor).'"/>'
+            : '';
+
+        $css = '';
+        if ($hasBackground && isset($options['emoji_dark_background'])) {
+            $darkBg = $options['emoji_dark_background'];
+            $css = '<style>.favicon-bg { fill: '.htmlspecialchars($backgroundColor).'; } @media (prefers-color-scheme: dark) { .favicon-bg { fill: '.htmlspecialchars($darkBg).'; } }</style>';
+            $bgRect = '<rect class="favicon-bg" x="0" y="0" width="100" height="100"/>';
+        }
+
+        return <<<SVG
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  {$css}{$bgRect}<text x="50" y="55" text-anchor="middle" dominant-baseline="central" font-size="80" font-family="{$fontFamily}">{$emoji}</text>
+</svg>
+SVG;
+    }
+
+    /**
+     * Generate an SVG from text characters.
+     */
+    public function generateFromText(string $text, array $options = []): string
+    {
+        $backgroundColor = $options['text_background_color'] ?? '#4f46e5';
+        $textColor = $options['text_color'] ?? '#ffffff';
+        $fontFamily = $this->getFontFamily($options['text_font'] ?? 'system-ui');
+        $fontWeight = $options['text_weight'] ?? 'bold';
+
+        // Adjust font size based on character count
+        $charCount = mb_strlen($text);
+        $fontSize = match (true) {
+            $charCount === 1 => 70,
+            $charCount === 2 => 55,
+            $charCount === 3 => 40,
+            default => 32,
+        };
+
+        $css = $this->buildTextModeCss($backgroundColor, $textColor, $options);
+
+        return <<<SVG
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <style>{$css}</style>
+  <rect class="favicon-bg" x="0" y="0" width="100" height="100"/>
+  <text class="favicon-text" x="50" y="55" text-anchor="middle" dominant-baseline="central" font-size="{$fontSize}" font-weight="{$fontWeight}" font-family="{$fontFamily}">{$text}</text>
+</svg>
+SVG;
+    }
+
+    /**
+     * Build CSS for text mode with dark mode support.
+     */
+    protected function buildTextModeCss(string $backgroundColor, string $textColor, array $options): string
+    {
+        $darkBg = $options['text_dark_background_color'] ?? $backgroundColor;
+        $darkText = $options['text_dark_color'] ?? $textColor;
+
+        $css = ".favicon-bg { fill: {$backgroundColor}; } .favicon-text { fill: {$textColor}; }";
+
+        if ($darkBg !== $backgroundColor || $darkText !== $textColor) {
+            $css .= " @media (prefers-color-scheme: dark) { .favicon-bg { fill: {$darkBg}; } .favicon-text { fill: {$darkText}; } }";
+        }
+
+        return $css;
+    }
+
+    /**
+     * Get the font family CSS value for the given font key.
+     */
+    protected function getFontFamily(string $fontKey): string
+    {
+        return match ($fontKey) {
+            'sans-serif' => 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            'serif' => 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+            'monospace' => 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            default => 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        };
+    }
 }

@@ -191,3 +191,119 @@ it('handles solid png background', function () {
 
     expect($this->testOutputPath.'/icon-512.png')->toBeFile();
 });
+
+it('generates svg from emoji', function () {
+    $svgGenerator = new SvgGenerator;
+    $svg = $svgGenerator->generateFromEmoji('🔥');
+
+    expect($svg)
+        ->toContain('🔥')
+        ->toContain('<svg')
+        ->toContain('viewBox="0 0 100 100"')
+        ->toContain('text-anchor="middle"');
+});
+
+it('generates svg from text', function () {
+    $svgGenerator = new SvgGenerator;
+    $svg = $svgGenerator->generateFromText('SA', [
+        'text_background_color' => '#4f46e5',
+        'text_color' => '#ffffff',
+        'text_font' => 'system-ui',
+        'text_weight' => 'bold',
+    ]);
+
+    expect($svg)
+        ->toContain('SA')
+        ->toContain('<svg')
+        ->toContain('viewBox="0 0 100 100"')
+        ->toContain('#4f46e5')
+        ->toContain('#ffffff')
+        ->toContain('font-weight="bold"');
+});
+
+it('adjusts font size based on text length', function () {
+    $svgGenerator = new SvgGenerator;
+
+    $svg1 = $svgGenerator->generateFromText('A');
+    $svg2 = $svgGenerator->generateFromText('AB');
+    $svg3 = $svgGenerator->generateFromText('ABC');
+    $svg4 = $svgGenerator->generateFromText('ABCD');
+
+    expect($svg1)->toContain('font-size="70"');
+    expect($svg2)->toContain('font-size="55"');
+    expect($svg3)->toContain('font-size="40"');
+    expect($svg4)->toContain('font-size="32"');
+});
+
+it('generates favicons from emoji source', function () {
+    if (! extension_loaded('imagick')) {
+        $this->markTestSkipped('Imagick extension required for SVG processing');
+    }
+
+    $svgGenerator = new SvgGenerator;
+    $svgContent = $svgGenerator->generateFromEmoji('🔥');
+
+    $tempSvgPath = $this->testOutputPath.'/emoji-source.svg';
+    file_put_contents($tempSvgPath, $svgContent);
+
+    $action = new GenerateFavicons($svgGenerator);
+    $action($tempSvgPath, [
+        'theme_color' => '#4f46e5',
+        'background_color' => '#ffffff',
+        'app_name' => 'Test App',
+        'app_short_name' => 'Test',
+        'source_type' => 'emoji',
+        'source_emoji' => '🔥',
+    ]);
+
+    expect($this->testOutputPath.'/favicon.ico')->toBeFile();
+    expect($this->testOutputPath.'/favicon.svg')->toBeFile();
+    expect($this->testOutputPath.'/icon-192.png')->toBeFile();
+    expect($this->testOutputPath.'/icon-512.png')->toBeFile();
+
+    // Verify the PNGs are not tiny (which would indicate failed rendering)
+    expect(filesize($this->testOutputPath.'/icon-512.png'))->toBeGreaterThan(500);
+});
+
+it('generates favicons from text source', function () {
+    if (! extension_loaded('imagick')) {
+        $this->markTestSkipped('Imagick extension required for SVG processing');
+    }
+
+    $svgGenerator = new SvgGenerator;
+    $svgContent = $svgGenerator->generateFromText('SA', [
+        'text_background_color' => '#4f46e5',
+        'text_color' => '#ffffff',
+        'text_font' => 'system-ui',
+        'text_weight' => 'bold',
+    ]);
+
+    $tempSvgPath = $this->testOutputPath.'/text-source.svg';
+    file_put_contents($tempSvgPath, $svgContent);
+
+    $action = new GenerateFavicons($svgGenerator);
+
+    $action($tempSvgPath, [
+        'theme_color' => '#4f46e5',
+        'background_color' => '#ffffff',
+        'app_name' => 'Test App',
+        'app_short_name' => 'Test',
+        'source_type' => 'text',
+        'source_text' => 'SA',
+        'text_background_color' => '#4f46e5',
+        'text_color' => '#ffffff',
+        'text_font' => 'system-ui',
+        'text_weight' => 'bold',
+    ]);
+
+    expect($this->testOutputPath.'/favicon.ico')->toBeFile();
+    expect($this->testOutputPath.'/favicon.svg')->toBeFile();
+    expect($this->testOutputPath.'/icon-192.png')->toBeFile();
+    expect($this->testOutputPath.'/icon-512.png')->toBeFile();
+
+    $svgFavicon = file_get_contents($this->testOutputPath.'/favicon.svg');
+    expect($svgFavicon)->toContain('SA');
+
+    // Verify the PNGs are not tiny (which would indicate failed rendering)
+    expect(filesize($this->testOutputPath.'/icon-512.png'))->toBeGreaterThan(500);
+});

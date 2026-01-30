@@ -34,35 +34,189 @@
             </PanelHeader>
             <Card>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Source Image (left column) -->
+                    <!-- Source Selection (left column) -->
                     <div class="space-y-4">
                         <div>
-                            <Label>Source Image</Label>
-                            <Description class="mb-3">
-                                {{ canProcessSvg ? 'SVG, PNG, or JPG' : 'PNG or JPG' }}, minimum 512x512px for raster images
-                            </Description>
+                            <Label>Source Type</Label>
+                            <div class="flex gap-1 p-1 bg-gray-100 dark:bg-dark-700 rounded-lg mb-4">
+                                <button
+                                    v-for="option in sourceTypeOptions"
+                                    :key="option.value"
+                                    type="button"
+                                    @click="form.source_type = option.value"
+                                    :class="[
+                                        'flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors',
+                                        form.source_type === option.value
+                                            ? 'bg-white dark:bg-dark-600 shadow-sm text-gray-900 dark:text-white'
+                                            : 'text-gray-600 dark:text-dark-300 hover:text-gray-900 dark:hover:text-white'
+                                    ]"
+                                >
+                                    {{ option.label }}
+                                </button>
+                            </div>
 
-                            <!-- Asset Field using Statamic PublishContainer -->
-                            <PublishContainer
-                                v-if="isAssetsField"
-                                :model-value="assetFieldValues"
-                                @update:model-value="onAssetFieldUpdate"
-                                @update:meta="onAssetMetaUpdate"
-                                :meta="assetFieldMetaData"
-                                :blueprint="emptyBlueprint"
-                                :track-dirty-state="false"
-                            >
-                                <PublishFieldsProvider :fields="assetFields">
-                                    <PublishFields />
-                                </PublishFieldsProvider>
-                            </PublishContainer>
+                            <!-- Asset Source -->
+                            <div v-if="form.source_type === 'asset'">
+                                <Description class="mb-3">
+                                    {{ canProcessSvg ? 'SVG, PNG, or JPG' : 'PNG or JPG' }}, minimum 512x512px for raster images
+                                </Description>
 
-                            <!-- Error message if container not configured -->
-                            <div
-                                v-else-if="assetFieldConfig?.type === 'html'"
-                                v-html="assetFieldConfig.html"
-                                class="mt-2"
-                            />
+                                <!-- Asset Field using Statamic PublishContainer -->
+                                <PublishContainer
+                                    v-if="isAssetsField"
+                                    :model-value="assetFieldValues"
+                                    @update:model-value="onAssetFieldUpdate"
+                                    @update:meta="onAssetMetaUpdate"
+                                    :meta="assetFieldMetaData"
+                                    :blueprint="emptyBlueprint"
+                                    :track-dirty-state="false"
+                                >
+                                    <PublishFieldsProvider :fields="assetFields">
+                                        <PublishFields />
+                                    </PublishFieldsProvider>
+                                </PublishContainer>
+
+                                <!-- Error message if container not configured -->
+                                <div
+                                    v-else-if="assetFieldConfig?.type === 'html'"
+                                    v-html="assetFieldConfig.html"
+                                    class="mt-2"
+                                />
+                            </div>
+
+                            <!-- Emoji Source -->
+                            <div v-else-if="form.source_type === 'emoji'" class="space-y-4">
+                                <Description class="mb-3">
+                                    Select or enter an emoji to use as your favicon
+                                </Description>
+                                <div>
+                                    <Label>Emoji</Label>
+                                    <div class="flex gap-2 items-center">
+                                        <Input
+                                            v-model="form.source_emoji"
+                                            type="text"
+                                            placeholder="Select below or type"
+                                            class="text-2xl text-center flex-1"
+                                            maxlength="8"
+                                        />
+                                        <button
+                                            v-if="form.source_emoji"
+                                            type="button"
+                                            @click="form.source_emoji = ''"
+                                            class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                            title="Clear"
+                                        >
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Emoji Picker -->
+                                <div class="border dark:border-dark-600 rounded-lg p-3 bg-white dark:bg-dark-800">
+                                    <div class="flex gap-2 mb-3 border-b dark:border-dark-600 pb-2">
+                                        <button
+                                            v-for="category in emojiCategories"
+                                            :key="category.name"
+                                            type="button"
+                                            @click="selectedEmojiCategory = category.name"
+                                            :class="[
+                                                'px-2 py-1 text-lg rounded transition-colors',
+                                                selectedEmojiCategory === category.name
+                                                    ? 'bg-gray-100 dark:bg-dark-600'
+                                                    : 'hover:bg-gray-50 dark:hover:bg-dark-700'
+                                            ]"
+                                            :title="category.label"
+                                        >
+                                            {{ category.icon }}
+                                        </button>
+                                    </div>
+                                    <div class="grid grid-cols-8 gap-1">
+                                        <button
+                                            v-for="emoji in currentCategoryEmojis"
+                                            :key="emoji"
+                                            type="button"
+                                            @click="form.source_emoji = emoji"
+                                            :class="[
+                                                'p-2 text-2xl rounded hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors',
+                                                form.source_emoji === emoji ? 'bg-blue-100 dark:bg-blue-900/30 ring-2 ring-blue-500' : ''
+                                            ]"
+                                        >
+                                            {{ emoji }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Text Source -->
+                            <div v-else-if="form.source_type === 'text'" class="space-y-4">
+                                <Description class="mb-3">
+                                    Enter 1-4 characters to use as your favicon
+                                </Description>
+                                <div>
+                                    <Label>Characters</Label>
+                                    <Input
+                                        v-model="form.source_text"
+                                        type="text"
+                                        placeholder="SA"
+                                        class="text-xl text-center font-bold uppercase"
+                                        maxlength="4"
+                                    />
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label>Font</Label>
+                                        <Select
+                                            v-model="form.text_font"
+                                            :options="fontOptions"
+                                            class="w-full"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label>Weight</Label>
+                                        <Select
+                                            v-model="form.text_weight"
+                                            :options="fontWeightOptions"
+                                            class="w-full"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label>Background Color</Label>
+                                        <div class="flex gap-2">
+                                            <input
+                                                type="color"
+                                                v-model="form.text_background_color"
+                                                class="w-12 h-10 rounded cursor-pointer border dark:border-dark-600"
+                                            />
+                                            <Input
+                                                v-model="form.text_background_color"
+                                                type="text"
+                                                class="flex-1 font-mono text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label>Text Color</Label>
+                                        <div class="flex gap-2">
+                                            <input
+                                                type="color"
+                                                v-model="form.text_color"
+                                                class="w-12 h-10 rounded cursor-pointer border dark:border-dark-600"
+                                            />
+                                            <Input
+                                                v-model="form.text_color"
+                                                type="text"
+                                                class="flex-1 font-mono text-sm"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -121,8 +275,8 @@
                             </div>
                         </div>
 
-                        <!-- Dark Mode Settings -->
-                        <div class="pt-4 border-t dark:border-dark-600">
+                        <!-- Dark Mode Settings (only for asset source type) -->
+                        <div v-if="form.source_type === 'asset'" class="pt-4 border-t dark:border-dark-600">
                             <Label>SVG Dark Mode Behavior</Label>
                             <Description class="mb-2">How should the SVG favicon appear in dark mode?</Description>
                             <Select
@@ -132,7 +286,7 @@
                             />
                         </div>
 
-                        <div v-if="form.dark_mode_style === 'custom'" class="grid grid-cols-2 gap-4">
+                        <div v-if="form.source_type === 'asset' && form.dark_mode_style === 'custom'" class="grid grid-cols-2 gap-4">
                             <div>
                                 <Label>Dark Mode Icon Color</Label>
                                 <div class="flex gap-2">
@@ -160,8 +314,8 @@
                     <Heading text="Icon Customization" :level="3" />
                 </div>
 
-                <!-- Live Preview -->
-                <div v-if="sourceAssetUrl" class="mb-6 p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
+                <!-- Live Preview for Asset source type -->
+                <div v-if="form.source_type === 'asset' && sourceAssetUrl" class="mb-6 p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
                     <p class="text-sm font-medium text-gray-600 dark:text-dark-200 mb-3">Live Preview</p>
                     <IconCustomizationPreview
                         :svg-url="sourceAssetUrl"
@@ -175,9 +329,152 @@
                     />
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <!-- Icon Color -->
-                    <div>
+                <!-- Live Preview for Emoji source type -->
+                <div v-if="form.source_type === 'emoji' && form.source_emoji" class="mb-6 p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
+                    <p class="text-sm font-medium text-gray-600 dark:text-dark-200 mb-3">Live Preview (Twemoji)</p>
+                    <div class="flex items-end gap-6">
+                        <!-- Large preview -->
+                        <div class="text-center">
+                            <div
+                                class="rounded-xl flex items-center justify-center border dark:border-dark-500 overflow-hidden shrink-0"
+                                :style="{
+                                    width: '128px',
+                                    height: '128px',
+                                    backgroundColor: form.png_transparent ? 'transparent' : form.png_background
+                                }"
+                            >
+                                <img
+                                    v-if="twemojiUrl"
+                                    :src="twemojiUrl"
+                                    class="transition-all duration-200"
+                                    :style="{ width: `${Math.round(128 * (1 - form.icon_padding / 50) * 0.8)}px`, height: `${Math.round(128 * (1 - form.icon_padding / 50) * 0.8)}px` }"
+                                    :alt="form.source_emoji"
+                                />
+                                <span v-else class="text-6xl">{{ form.source_emoji }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-dark-400 mt-1">512x512</p>
+                        </div>
+                        <!-- Medium preview -->
+                        <div class="text-center">
+                            <div
+                                class="rounded-lg flex items-center justify-center border dark:border-dark-500 overflow-hidden shrink-0"
+                                :style="{
+                                    width: '48px',
+                                    height: '48px',
+                                    backgroundColor: form.png_transparent ? 'transparent' : form.png_background
+                                }"
+                            >
+                                <img
+                                    v-if="twemojiUrl"
+                                    :src="twemojiUrl"
+                                    class="transition-all duration-200"
+                                    :style="{ width: `${Math.round(48 * (1 - form.icon_padding / 50) * 0.8)}px`, height: `${Math.round(48 * (1 - form.icon_padding / 50) * 0.8)}px` }"
+                                    :alt="form.source_emoji"
+                                />
+                                <span v-else class="text-xl">{{ form.source_emoji }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-dark-400 mt-1">192x192</p>
+                        </div>
+                        <!-- Small preview -->
+                        <div class="text-center">
+                            <div
+                                class="rounded flex items-center justify-center border dark:border-dark-500 overflow-hidden shrink-0"
+                                :style="{
+                                    width: '32px',
+                                    height: '32px',
+                                    backgroundColor: form.png_transparent ? 'transparent' : form.png_background
+                                }"
+                            >
+                                <img
+                                    v-if="twemojiUrl"
+                                    :src="twemojiUrl"
+                                    class="transition-all duration-200"
+                                    :style="{ width: `${Math.round(32 * (1 - form.icon_padding / 50) * 0.8)}px`, height: `${Math.round(32 * (1 - form.icon_padding / 50) * 0.8)}px` }"
+                                    :alt="form.source_emoji"
+                                />
+                                <span v-else class="text-sm">{{ form.source_emoji }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-dark-400 mt-1">32x32</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Preview for Text source type -->
+                <div v-if="form.source_type === 'text' && form.source_text" class="mb-6 p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
+                    <p class="text-sm font-medium text-gray-600 dark:text-dark-200 mb-3">Live Preview</p>
+                    <div class="flex items-end gap-6">
+                        <!-- Large preview -->
+                        <div class="text-center">
+                            <div
+                                class="rounded-xl flex items-center justify-center overflow-hidden shrink-0"
+                                :style="{
+                                    width: '128px',
+                                    height: '128px',
+                                    backgroundColor: form.text_background_color
+                                }"
+                            >
+                                <span
+                                    class="transition-all duration-200"
+                                    :style="{
+                                        color: form.text_color,
+                                        fontFamily: getFontFamilyCss(form.text_font),
+                                        fontWeight: form.text_weight,
+                                        fontSize: getTextPreviewFontSize(form.source_text, 128, form.icon_padding)
+                                    }"
+                                >{{ form.source_text }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-dark-400 mt-1">512x512</p>
+                        </div>
+                        <!-- Medium preview -->
+                        <div class="text-center">
+                            <div
+                                class="rounded-lg flex items-center justify-center overflow-hidden shrink-0"
+                                :style="{
+                                    width: '48px',
+                                    height: '48px',
+                                    backgroundColor: form.text_background_color
+                                }"
+                            >
+                                <span
+                                    class="transition-all duration-200"
+                                    :style="{
+                                        color: form.text_color,
+                                        fontFamily: getFontFamilyCss(form.text_font),
+                                        fontWeight: form.text_weight,
+                                        fontSize: getTextPreviewFontSize(form.source_text, 48, form.icon_padding)
+                                    }"
+                                >{{ form.source_text }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-dark-400 mt-1">192x192</p>
+                        </div>
+                        <!-- Small preview -->
+                        <div class="text-center">
+                            <div
+                                class="rounded flex items-center justify-center overflow-hidden shrink-0"
+                                :style="{
+                                    width: '32px',
+                                    height: '32px',
+                                    backgroundColor: form.text_background_color
+                                }"
+                            >
+                                <span
+                                    class="transition-all duration-200"
+                                    :style="{
+                                        color: form.text_color,
+                                        fontFamily: getFontFamilyCss(form.text_font),
+                                        fontWeight: form.text_weight,
+                                        fontSize: getTextPreviewFontSize(form.source_text, 32, form.icon_padding)
+                                    }"
+                                >{{ form.source_text }}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-dark-400 mt-1">32x32</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Icon Color (only for asset source type) -->
+                    <div v-if="form.source_type === 'asset'">
                         <Label>{{ form.use_custom_icon_color ? 'Icon Color (Light Mode)' : 'Icon Color' }}</Label>
                         <Description class="mb-2">Override fill color for monochrome SVGs</Description>
                         <div class="flex gap-2">
@@ -244,10 +541,10 @@
                         </div>
                     </div>
 
-                    <!-- PNG Background -->
+                    <!-- Background Color -->
                     <div>
-                        <Label>{{ form.use_custom_icon_color && !form.png_transparent ? 'PNG Background (Light)' : 'PNG Background' }}</Label>
-                        <Description class="mb-2">Background color for PNG icons</Description>
+                        <Label>Background Color</Label>
+                        <Description class="mb-2">Background color for generated icons</Description>
                         <div class="flex gap-2">
                             <input
                                 type="color"
@@ -270,26 +567,6 @@
                             />
                             <span class="text-sm text-gray-600 dark:text-dark-200">Transparent background</span>
                         </label>
-                        <!-- Dark Mode PNG Background -->
-                        <div v-if="form.use_custom_icon_color && !form.png_transparent" class="mt-4 pt-4 border-t dark:border-dark-600">
-                            <Label>PNG Background (Dark)</Label>
-                            <Description class="mb-2">Background for dark mode preview</Description>
-                            <div class="flex gap-2">
-                                <input
-                                    type="color"
-                                    v-model="form.png_dark_background"
-                                    class="w-12 h-10 rounded cursor-pointer border dark:border-dark-600"
-                                />
-                                <Input
-                                    v-model="form.png_dark_background"
-                                    type="text"
-                                    class="flex-1 font-mono text-sm"
-                                />
-                            </div>
-                            <p class="text-xs text-gray-400 dark:text-dark-400 mt-2">
-                                Note: PNGs are static files. Dark mode preview shows how icons appear on dark backgrounds.
-                            </p>
-                        </div>
                     </div>
                 </div>
             </Card>
@@ -302,7 +579,7 @@
                 <Button
                     @click="generate"
                     :loading="generating"
-                    :disabled="!form.source_asset"
+                    :disabled="!canGenerate"
                     variant="primary"
                     text="Generate Favicons"
                 />
@@ -363,6 +640,76 @@ const DARK_MODE_OPTIONS = [
     { value: 'none', label: 'No change' },
 ];
 
+const SOURCE_TYPE_OPTIONS = [
+    { value: 'asset', label: 'Image' },
+    { value: 'emoji', label: 'Emoji' },
+    { value: 'text', label: 'Text' },
+];
+
+const FONT_OPTIONS = [
+    { value: 'system-ui', label: 'System UI' },
+    { value: 'sans-serif', label: 'Sans Serif' },
+    { value: 'serif', label: 'Serif' },
+    { value: 'monospace', label: 'Monospace' },
+];
+
+const FONT_WEIGHT_OPTIONS = [
+    { value: 'normal', label: 'Normal' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'bold', label: 'Bold' },
+];
+
+const EMOJI_CATEGORIES = [
+    {
+        name: 'popular',
+        label: 'Popular',
+        icon: '⭐',
+        emojis: ['🔥', '✨', '💡', '🚀', '⚡', '💎', '🎯', '✅', '❤️', '💜', '💙', '💚', '🧡', '💛', '🖤', '🤍', '📱', '💻', '🌐', '📧', '📝', '📊', '🎨', '🎵', '📸', '🎬', '🏠', '🏢', '🛒', '💰', '🔒', '🔑'],
+    },
+    {
+        name: 'smileys',
+        label: 'Smileys',
+        icon: '😀',
+        emojis: ['😀', '😃', '😄', '😁', '😊', '🥰', '😍', '🤩', '😎', '🤓', '🧐', '🤔', '😏', '😌', '🥳', '🤗', '🙂', '🙃', '😇', '😈', '👻', '🤖', '👽', '💀', '🎃', '😺', '😸', '😹', '😻', '🙀', '😿', '😾'],
+    },
+    {
+        name: 'animals',
+        label: 'Animals',
+        icon: '🐶',
+        emojis: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦅', '🦆', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐢'],
+    },
+    {
+        name: 'food',
+        label: 'Food',
+        icon: '🍕',
+        emojis: ['🍎', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🥑', '🌶️', '🌽', '🥕', '🥦', '🧄', '🧅', '🍄', '🥜', '🍞', '🥐', '🧀', '🍕', '🍔', '🍟', '🌭', '🍿', '☕'],
+    },
+    {
+        name: 'activities',
+        label: 'Activities',
+        icon: '⚽',
+        emojis: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🏓', '🏸', '🏒', '🥊', '🎿', '⛷️', '🏂', '🏋️', '🤸', '🧘', '🎮', '🎲', '🧩', '🎭', '🎨', '🎤', '🎧', '🎸', '🎹', '🥁', '🎺', '🎻'],
+    },
+    {
+        name: 'travel',
+        label: 'Travel',
+        icon: '✈️',
+        emojis: ['🚗', '🚕', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🏍️', '🛵', '🚲', '✈️', '🚀', '🛸', '🚁', '⛵', '🚢', '🗼', '🗽', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛱️', '🏖️'],
+    },
+    {
+        name: 'objects',
+        label: 'Objects',
+        icon: '💼',
+        emojis: ['⌚', '📱', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '💾', '💿', '📷', '📹', '🎥', '📞', '☎️', '📺', '📻', '🎙️', '⏰', '🔋', '💡', '🔦', '🕯️', '💵', '💳', '💎', '⚖️', '🔧', '🔨', '⚙️', '🔩', '📎', '✂️'],
+    },
+    {
+        name: 'symbols',
+        label: 'Symbols',
+        icon: '💯',
+        emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☯️', '✡️', '🔯', '♈', '♉', '♊', '♋', '♌', '♍', '♎'],
+    },
+];
+
 const EMPTY_BLUEPRINT = { tabs: [] };
 
 export default {
@@ -399,7 +746,10 @@ export default {
     data() {
         return {
             form: {
+                source_type: this.settings.source_type ?? 'asset',
                 source_asset: this.settings.source_asset ?? null,
+                source_emoji: this.settings.source_emoji ?? '',
+                source_text: this.settings.source_text ?? '',
                 theme_color: this.settings.theme_color ?? '#4f46e5',
                 background_color: this.settings.background_color ?? '#ffffff',
                 app_name: this.settings.app_name ?? '',
@@ -414,8 +764,18 @@ export default {
                 png_background: this.settings.png_background ?? '#ffffff',
                 png_dark_background: this.settings.png_dark_background ?? '#1a1a1a',
                 png_transparent: this.settings.png_transparent ?? true,
+                // Text mode options
+                text_font: this.settings.text_font ?? 'system-ui',
+                text_weight: this.settings.text_weight ?? 'bold',
+                text_color: this.settings.text_color ?? '#ffffff',
+                text_background_color: this.settings.text_background_color ?? this.settings.theme_color ?? '#4f46e5',
             },
             darkModeOptions: DARK_MODE_OPTIONS,
+            sourceTypeOptions: SOURCE_TYPE_OPTIONS,
+            fontOptions: FONT_OPTIONS,
+            fontWeightOptions: FONT_WEIGHT_OPTIONS,
+            emojiCategories: EMOJI_CATEGORIES,
+            selectedEmojiCategory: 'popular',
             emptyBlueprint: EMPTY_BLUEPRINT,
             generating: false,
             saving: false,
@@ -519,9 +879,46 @@ export default {
             }
             return null;
         },
+
+        canGenerate() {
+            const sourceType = this.form.source_type || 'asset';
+            switch (sourceType) {
+                case 'emoji':
+                    return Boolean(this.form.source_emoji && String(this.form.source_emoji).trim().length > 0);
+                case 'text':
+                    return Boolean(this.form.source_text && String(this.form.source_text).trim().length > 0);
+                case 'asset':
+                default:
+                    return Boolean(this.form.source_asset);
+            }
+        },
+
+        currentCategoryEmojis() {
+            const category = this.emojiCategories.find(c => c.name === this.selectedEmojiCategory);
+            return category ? category.emojis : [];
+        },
+
+        twemojiUrl() {
+            if (!this.form.source_emoji) return null;
+            const codepoints = this.getEmojiCodepoints(this.form.source_emoji);
+            if (!codepoints) return null;
+            return `https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/svg/${codepoints}.svg`;
+        },
     },
 
     methods: {
+        getEmojiCodepoints(emoji) {
+            if (!emoji) return null;
+            const codepoints = [];
+            for (const char of emoji) {
+                const code = char.codePointAt(0);
+                // Skip variation selectors (FE0E, FE0F)
+                if (code === 0xFE0E || code === 0xFE0F) continue;
+                codepoints.push(code.toString(16));
+            }
+            return codepoints.length > 0 ? codepoints.join('-') : null;
+        },
+
         onAssetFieldUpdate(values) {
             const assets = values.source_asset || [];
             this.form.source_asset = assets[0] || null;
@@ -611,6 +1008,28 @@ export default {
             } finally {
                 this.clearing = false;
             }
+        },
+
+        getFontFamilyCss(fontKey) {
+            const fonts = {
+                'system-ui': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                'sans-serif': 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                'serif': 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+                'monospace': 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+            };
+            return fonts[fontKey] || fonts['system-ui'];
+        },
+
+        getTextPreviewFontSize(text, containerSize, padding) {
+            const charCount = text ? text.length : 0;
+            const paddingFactor = 1 - (padding / 100) * 2;
+            const effectiveSize = containerSize * paddingFactor;
+
+            // Base multipliers for different character counts
+            const multipliers = { 1: 0.55, 2: 0.42, 3: 0.32, 4: 0.25 };
+            const multiplier = multipliers[Math.min(charCount, 4)] || multipliers[4];
+
+            return `${Math.round(effectiveSize * multiplier)}px`;
         },
     },
 };

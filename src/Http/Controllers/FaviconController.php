@@ -13,6 +13,7 @@ use Statamic\Facades\AssetContainer;
 use Statamic\Facades\YAML;
 use Statamic\Fields\Field;
 use WestWallTech\FaviconGenerator\Actions\GenerateFavicons;
+use WestWallTech\FaviconGenerator\Support\SvgGenerator;
 
 class FaviconController extends Controller
 {
@@ -54,6 +55,14 @@ class FaviconController extends Controller
         'png_background' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
         'png_dark_background' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
         'png_transparent' => 'nullable|boolean',
+        // Source type fields
+        'source_type' => 'nullable|string|in:asset,emoji,text',
+        'source_emoji' => 'nullable|string|max:8',
+        'source_text' => 'nullable|string|max:4',
+        'text_font' => 'nullable|string|in:system-ui,sans-serif,serif,monospace',
+        'text_weight' => 'nullable|string|in:normal,medium,bold',
+        'text_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'text_background_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
     ];
 
     public function index(): Response
@@ -71,68 +80,128 @@ class FaviconController extends Controller
         ]);
     }
 
-    public function generate(Request $request, GenerateFavicons $action): JsonResponse|RedirectResponse
+    public function generate(Request $request, GenerateFavicons $action, SvgGenerator $svgGenerator): JsonResponse|RedirectResponse
     {
-        $validated = $request->validate([
-            'source_asset' => 'required|string',
-            ...self::VALIDATION_RULES,
-        ]);
+        $sourceType = $request->input('source_type', 'asset');
 
-        $asset = Asset::find($validated['source_asset']);
+        // Build validation rules based on source type
+        $rules = match ($sourceType) {
+            'emoji' => [
+                'source_emoji' => 'required|string|max:8',
+                'source_asset' => 'nullable|string',
+                ...self::VALIDATION_RULES,
+            ],
+            'text' => [
+                'source_text' => 'required|string|max:4|min:1',
+                'source_asset' => 'nullable|string',
+                ...self::VALIDATION_RULES,
+            ],
+            default => [
+                'source_asset' => 'required|string',
+                ...self::VALIDATION_RULES,
+            ],
+        };
 
-        if (! $asset) {
-            if ($request->wantsJson()) {
-                return response()->json(['error' => 'Source image not found'], 422);
-            }
+        $validated = $request->validate($rules);
+        $tempSvgPath = null;
 
-            return back()->withErrors(['source_asset' => 'Source image not found']);
-        }
+        try {
+            // Determine source path based on source type
+            if ($sourceType === 'emoji') {
+                $emoji = $validated['source_emoji'];
+                $svgContent = $svgGenerator->generateFromEmoji($emoji, [
+                    'emoji_background' => 'transparent',
+                ]);
+                $tempSvgPath = sys_get_temp_dir().'/favicon-emoji-'.uniqid().'.svg';
+                file_put_contents($tempSvgPath, $svgContent);
+                $sourcePath = $tempSvgPath;
+            } elseif ($sourceType === 'text') {
+                $text = $validated['source_text'];
+                $svgContent = $svgGenerator->generateFromText($text, [
+                    'text_background_color' => $validated['text_background_color'] ?? $validated['theme_color'],
+                    'text_color' => $validated['text_color'] ?? '#ffffff',
+                    'text_font' => $validated['text_font'] ?? 'system-ui',
+                    'text_weight' => $validated['text_weight'] ?? 'bold',
+                ]);
+                $tempSvgPath = sys_get_temp_dir().'/favicon-text-'.uniqid().'.svg';
+                file_put_contents($tempSvgPath, $svgContent);
+                $sourcePath = $tempSvgPath;
+            } else {
+                // Asset source type
+                $asset = Asset::find($validated['source_asset']);
 
-        $extension = strtolower($asset->extension());
-        $canProcessSvg = GenerateFavicons::canProcessSvg();
-        $allowedExtensions = ['png', 'jpg', 'jpeg'];
+                if (! $asset) {
+                    if ($request->wantsJson()) {
+                        return response()->json(['error' => 'Source image not found'], 422);
+                    }
 
-        if ($canProcessSvg) {
-            $allowedExtensions[] = 'svg';
-        }
-
-        if (! in_array($extension, $allowedExtensions)) {
-            $formats = $canProcessSvg ? 'PNG, JPG, or SVG' : 'PNG or JPG';
-
-            if ($request->wantsJson()) {
-                return response()->json(['error' => "Source image must be {$formats} format"], 422);
-            }
-
-            return back()->withErrors(['source_asset' => "Source image must be {$formats} format"]);
-        }
-
-        // For raster images, check minimum dimensions
-        if ($extension !== 'svg') {
-            $dimensions = $asset->dimensions();
-            if (! $dimensions || $dimensions[0] < 512 || $dimensions[1] < 512) {
-                if ($request->wantsJson()) {
-                    return response()->json(['error' => 'Image must be at least 512x512 pixels'], 422);
+                    return back()->withErrors(['source_asset' => 'Source image not found']);
                 }
 
-                return back()->withErrors(['source_asset' => 'Image must be at least 512x512 pixels']);
+                $extension = strtolower($asset->extension());
+                $canProcessSvg = GenerateFavicons::canProcessSvg();
+                $allowedExtensions = ['png', 'jpg', 'jpeg'];
+
+                if ($canProcessSvg) {
+                    $allowedExtensions[] = 'svg';
+                }
+
+                if (! in_array($extension, $allowedExtensions)) {
+                    $formats = $canProcessSvg ? 'PNG, JPG, or SVG' : 'PNG or JPG';
+
+                    if ($request->wantsJson()) {
+                        return response()->json(['error' => "Source image must be {$formats} format"], 422);
+                    }
+
+                    return back()->withErrors(['source_asset' => "Source image must be {$formats} format"]);
+                }
+
+                // For raster images, check minimum dimensions
+                if ($extension !== 'svg') {
+                    $dimensions = $asset->dimensions();
+                    if (! $dimensions || $dimensions[0] < 512 || $dimensions[1] < 512) {
+                        if ($request->wantsJson()) {
+                            return response()->json(['error' => 'Image must be at least 512x512 pixels'], 422);
+                        }
+
+                        return back()->withErrors(['source_asset' => 'Image must be at least 512x512 pixels']);
+                    }
+                }
+
+                $sourcePath = $asset->resolvedPath();
+            }
+
+            $generationOptions = $this->buildGenerationOptions($validated);
+            $generationOptions['source_type'] = $sourceType;
+
+            if ($sourceType === 'emoji') {
+                $generationOptions['source_emoji'] = $validated['source_emoji'];
+            } elseif ($sourceType === 'text') {
+                $generationOptions['source_text'] = $validated['source_text'];
+            }
+
+            $action(
+                sourcePath: $sourcePath,
+                options: $generationOptions
+            );
+
+            $this->saveSettingsToFile([
+                ...$validated,
+                'source_type' => $sourceType,
+                'generated_at' => now()->toIso8601String(),
+            ]);
+
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => 'Favicons generated successfully!']);
+            }
+
+            return back()->with('success', 'Favicons generated successfully!');
+        } finally {
+            // Clean up temp file
+            if ($tempSvgPath && file_exists($tempSvgPath)) {
+                unlink($tempSvgPath);
             }
         }
-
-        $action(
-            sourcePath: $asset->resolvedPath(),
-            options: $this->buildGenerationOptions($validated)
-        );
-
-        $this->saveSettingsToFile([
-            ...$validated,
-            'generated_at' => now()->toIso8601String(),
-        ]);
-
-        if ($request->wantsJson()) {
-            return response()->json(['success' => true, 'message' => 'Favicons generated successfully!']);
-        }
-
-        return back()->with('success', 'Favicons generated successfully!');
     }
 
     public function preview(): JsonResponse
@@ -208,6 +277,11 @@ class FaviconController extends Controller
             'png_background' => $validated['png_background'] ?? '#ffffff',
             'png_dark_background' => $validated['png_dark_background'] ?? '#1a1a1a',
             'png_transparent' => $validated['png_transparent'] ?? true,
+            // Text mode options
+            'text_font' => $validated['text_font'] ?? 'system-ui',
+            'text_weight' => $validated['text_weight'] ?? 'bold',
+            'text_color' => $validated['text_color'] ?? '#ffffff',
+            'text_background_color' => $validated['text_background_color'] ?? $validated['theme_color'],
         ];
     }
 
@@ -326,18 +400,30 @@ class FaviconController extends Controller
     {
         $path = base_path(config('favicon-generator.settings_path'));
 
+        $defaults = [
+            'source_type' => 'asset',
+            'source_asset' => null,
+            'source_emoji' => '',
+            'source_text' => '',
+            'theme_color' => config('favicon-generator.default_theme_color', '#4f46e5'),
+            'background_color' => config('favicon-generator.default_background_color', '#ffffff'),
+            'app_name' => config('app.name', ''),
+            'app_short_name' => '',
+            'text_font' => 'system-ui',
+            'text_weight' => 'bold',
+            'text_color' => '#ffffff',
+            'text_background_color' => config('favicon-generator.default_theme_color', '#4f46e5'),
+            'generated_at' => null,
+        ];
+
         if (! file_exists($path)) {
-            return [
-                'source_asset' => null,
-                'theme_color' => config('favicon-generator.default_theme_color', '#4f46e5'),
-                'background_color' => config('favicon-generator.default_background_color', '#ffffff'),
-                'app_name' => config('app.name', ''),
-                'app_short_name' => '',
-                'generated_at' => null,
-            ];
+            return $defaults;
         }
 
-        return YAML::file($path)->parse();
+        $settings = YAML::file($path)->parse();
+
+        // Merge with defaults to ensure all keys exist
+        return array_merge($defaults, $settings);
     }
 
     protected function saveSettingsToFile(array $settings): void
