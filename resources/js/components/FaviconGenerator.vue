@@ -21,9 +21,9 @@
         </div>
 
         <!-- Form Errors -->
-        <div v-if="errors && Object.keys(errors).length" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <div v-if="hasErrors" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
             <ul class="list-disc list-inside text-red-800 dark:text-red-200">
-                <li v-for="(error, key) in errors" :key="key">{{ error }}</li>
+                <li v-for="message in flattenedErrors" :key="message">{{ message }}</li>
             </ul>
         </div>
 
@@ -449,6 +449,31 @@ export default {
             return this.generatedFiles.length > 0;
         },
 
+        hasErrors() {
+            return this.errors && (
+                typeof this.errors === 'string' ||
+                Object.keys(this.errors).length > 0
+            );
+        },
+
+        flattenedErrors() {
+            if (!this.errors) return [];
+            // Handle string error (e.g., { error: "message" })
+            if (typeof this.errors === 'string') {
+                return [this.errors];
+            }
+            // Handle Laravel validation errors (e.g., { field: ["message"] })
+            const messages = [];
+            for (const [field, fieldErrors] of Object.entries(this.errors)) {
+                if (Array.isArray(fieldErrors)) {
+                    messages.push(...fieldErrors);
+                } else if (typeof fieldErrors === 'string') {
+                    messages.push(fieldErrors);
+                }
+            }
+            return messages;
+        },
+
         cacheKey() {
             return this.generatedFiles[0]?.modified || Date.now();
         },
@@ -527,11 +552,17 @@ export default {
             this.errors = {};
 
             try {
-                await this.$axios.post('/cp/favicon-generator/save', this.form);
+                await this.$axios.post('/cp/favicon-generator/save', this.form, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                });
                 this.$toast.success('Settings saved');
             } catch (error) {
                 if (error.response?.status === 422) {
-                    this.errors = error.response.data.errors || {};
+                    const data = error.response.data;
+                    this.errors = data.errors || (data.error ? { error: data.error } : {});
                 } else {
                     this.$toast.error('Failed to save settings');
                 }
@@ -545,11 +576,18 @@ export default {
             this.errors = {};
 
             try {
-                await this.$axios.post('/cp/favicon-generator/generate', this.form);
+                await this.$axios.post('/cp/favicon-generator/generate', this.form, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                });
                 window.location.reload();
             } catch (error) {
                 if (error.response?.status === 422) {
-                    this.errors = error.response.data.errors || {};
+                    const data = error.response.data;
+                    // Handle both { errors: {...} } and { error: "string" } formats
+                    this.errors = data.errors || (data.error ? { error: data.error } : {});
                 } else {
                     this.$toast.error('Failed to generate favicons');
                 }

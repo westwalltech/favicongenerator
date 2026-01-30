@@ -181,7 +181,8 @@ class GenerateFavicons
             $this->createHighQualityPng($image, $size, $outputPath, $options);
         } else {
             $resized = clone $image;
-            $resized->cover($size, $size);
+            // Use contain mode to fit entire icon without cropping
+            $resized->contain($size, $size);
             $resized->toPng()->save($outputPath);
         }
 
@@ -227,26 +228,22 @@ class GenerateFavicons
             $iconSize = (int) round($size * (1 - $paddingFraction * 2));
             $iconSize = max($iconSize, 1);
 
-            // Resize with high quality Lanczos filter (cover mode)
-            $ratio = max($iconSize / $sourceWidth, $iconSize / $sourceHeight);
+            // Resize with high quality Lanczos filter (contain mode - fit entire icon)
+            $ratio = min($iconSize / $sourceWidth, $iconSize / $sourceHeight);
             $newWidth = (int) round($sourceWidth * $ratio);
             $newHeight = (int) round($sourceHeight * $ratio);
             $imagick->resizeImage($newWidth, $newHeight, Imagick::FILTER_LANCZOS, 1);
-
-            // Center crop to icon size
-            $cropX = (int) (($newWidth - $iconSize) / 2);
-            $cropY = (int) (($newHeight - $iconSize) / 2);
-            $imagick->cropImage($iconSize, $iconSize, $cropX, $cropY);
-            $imagick->setImagePage($iconSize, $iconSize, 0, 0);
+            $imagick->setImagePage($newWidth, $newHeight, 0, 0);
 
             // Create canvas with background
             $canvas = new Imagick();
             $canvas->newImage($size, $size, new \ImagickPixel($backgroundColor));
             $canvas->setImageFormat('png32');
 
-            // Center the icon on canvas
-            $offset = (int) (($size - $iconSize) / 2);
-            $canvas->compositeImage($imagick, Imagick::COMPOSITE_OVER, $offset, $offset);
+            // Center the resized icon on canvas
+            $offsetX = (int) (($size - $newWidth) / 2);
+            $offsetY = (int) (($size - $newHeight) / 2);
+            $canvas->compositeImage($imagick, Imagick::COMPOSITE_OVER, $offsetX, $offsetY);
 
             // Ensure output directory exists
             $outputDir = dirname($outputPath);
