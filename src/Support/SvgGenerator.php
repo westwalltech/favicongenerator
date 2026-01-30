@@ -4,6 +4,9 @@ namespace WestWallTech\FaviconGenerator\Support;
 
 class SvgGenerator
 {
+    /**
+     * Generate an SVG favicon from a raster image by embedding it as base64.
+     */
     public function generate(string $imagePath, string $darkModeStyle = 'invert', string $darkModeColor = '#ffffff'): string
     {
         $mimeType = $this->getMimeType($imagePath);
@@ -22,24 +25,202 @@ class SvgGenerator
 SVG;
     }
 
+    /**
+     * Inject dark mode CSS into an existing SVG file.
+     */
+    public function injectDarkModeIntoSvg(string $svgContent, string $darkModeStyle = 'invert', string $darkModeColor = '#ffffff', array $options = []): string
+    {
+        $darkModeCSS = $this->getDarkModeStyle($darkModeStyle, $darkModeColor);
+        $pngTransparent = $options['png_transparent'] ?? true;
+
+        if (! $pngTransparent) {
+            $css = $this->buildBackgroundCss($options, "@media (prefers-color-scheme: dark) { {$darkModeCSS} }");
+        } else {
+            $css = "@media (prefers-color-scheme: dark) { {$darkModeCSS} }";
+        }
+
+        $svgContent = $this->injectStyleElement($svgContent, $css);
+
+        if (! $pngTransparent) {
+            $svgContent = $this->addBackgroundRect($svgContent);
+        }
+
+        return $this->applyPaddingIfNeeded($svgContent, $options);
+    }
+
+    /**
+     * Apply custom icon colors to an SVG for both light and dark modes.
+     */
+    public function applyCustomIconColors(string $svgContent, string $lightColor, string $darkColor, array $options = []): string
+    {
+        // Replace currentColor with a CSS variable
+        $svgContent = str_replace('currentColor', 'var(--icon-color)', $svgContent);
+
+        // Replace black fills with the CSS variable
+        $svgContent = preg_replace('/fill=["\']#0{3,6}["\']/i', 'fill="var(--icon-color)"', $svgContent);
+
+        // Build CSS with custom properties and media query
+        $css = ":root { --icon-color: {$lightColor}; }";
+        $css .= " @media (prefers-color-scheme: dark) { :root { --icon-color: {$darkColor}; } }";
+
+        $pngTransparent = $options['png_transparent'] ?? true;
+        if (! $pngTransparent) {
+            $css .= ' '.$this->buildBackgroundCss($options);
+        }
+
+        $svgContent = $this->injectStyleElement($svgContent, $css);
+
+        if (! $pngTransparent) {
+            $svgContent = $this->addBackgroundRect($svgContent);
+        }
+
+        return $this->applyPaddingIfNeeded($svgContent, $options);
+    }
+
+    /**
+     * Add only background to an SVG without dark mode icon changes.
+     */
+    public function addBackgroundToSvg(string $svgContent, array $options): string
+    {
+        $css = $this->buildBackgroundCss($options);
+        $svgContent = $this->injectStyleElement($svgContent, $css);
+        $svgContent = $this->addBackgroundRect($svgContent);
+
+        return $this->applyPaddingIfNeeded($svgContent, $options);
+    }
+
+    /**
+     * Add dark mode support to an SVG (legacy method for backwards compatibility).
+     */
     public function addDarkModeSupport(string $svgContent): string
     {
-        $darkModeRule = '@media (prefers-color-scheme: dark) { svg { filter: brightness(1.2) contrast(1.1); } }';
+        return $this->injectDarkModeIntoSvg($svgContent, 'lighten');
+    }
 
+    /**
+     * Build CSS for background colors with dark mode support.
+     */
+    protected function buildBackgroundCss(array $options, string $additionalDarkCss = ''): string
+    {
+        $lightBg = $options['png_background'] ?? '#ffffff';
+        $darkBg = $options['png_dark_background'] ?? '#1a1a1a';
+
+        $css = ".favicon-bg { fill: {$lightBg}; }";
+        $darkContent = ".favicon-bg { fill: {$darkBg}; }";
+
+        if ($additionalDarkCss) {
+            $darkContent .= ' '.$additionalDarkCss;
+        }
+
+        return $css." @media (prefers-color-scheme: dark) { {$darkContent} }";
+    }
+
+    /**
+     * Inject or replace CSS in an SVG's style element.
+     */
+    protected function injectStyleElement(string $svgContent, string $css): string
+    {
         if (preg_match('/<style[^>]*>.*?<\/style>/s', $svgContent)) {
             return preg_replace(
-                '/(<style[^>]*>)(.*?)(<\/style>)/s',
-                '$1$2 '.$darkModeRule.' $3',
+                '/(<style[^>]*>).*?(<\/style>)/s',
+                '$1'.$css.'$2',
                 $svgContent
             );
         }
 
         return preg_replace(
             '/(<svg[^>]*>)/i',
-            '$1<style>'.$darkModeRule.'</style>',
+            '$1<style>'.$css.'</style>',
             $svgContent,
             1
         );
+    }
+
+    /**
+     * Apply padding if specified in options.
+     */
+    protected function applyPaddingIfNeeded(string $svgContent, array $options): string
+    {
+        $padding = $options['icon_padding'] ?? 0;
+
+        if ($padding > 0) {
+            return $this->applyPaddingToSvg($svgContent, $padding);
+        }
+
+        return $svgContent;
+    }
+
+    /**
+     * Apply padding to SVG content by wrapping icon elements in a scaled/translated group.
+     */
+    protected function applyPaddingToSvg(string $svgContent, int $paddingPercent): string
+    {
+        ['width' => $width, 'height' => $height] = $this->extractDimensions($svgContent);
+
+        // Calculate scale and translation for padding
+        $paddingFraction = $paddingPercent / 100;
+        $scale = 1 - ($paddingFraction * 2);
+        $translateX = $width * $paddingFraction;
+        $translateY = $height * $paddingFraction;
+
+        // Add closing group tag before </svg>
+        $svgContent = preg_replace('/(<\/svg>)/i', '</g>$1', $svgContent, 1);
+
+        // Insert opening group tag after background rect, style, or svg tag
+        $groupTag = '<g transform="translate('.$translateX.','.$translateY.') scale('.$scale.')">';
+
+        if (preg_match('/<rect[^>]*class=["\']favicon-bg["\'][^>]*\/?>/i', $svgContent)) {
+            return preg_replace(
+                '/(<rect[^>]*class=["\']favicon-bg["\'][^>]*\/?>)/i',
+                '$1'.$groupTag,
+                $svgContent,
+                1
+            );
+        }
+
+        if (preg_match('/<\/style>/i', $svgContent)) {
+            return preg_replace('/(<\/style>)/i', '$1'.$groupTag, $svgContent, 1);
+        }
+
+        return preg_replace('/(<svg[^>]*>)/i', '$1'.$groupTag, $svgContent, 1);
+    }
+
+    /**
+     * Add a background rectangle to an SVG as the first child element.
+     */
+    protected function addBackgroundRect(string $svgContent): string
+    {
+        ['width' => $width, 'height' => $height] = $this->extractDimensions($svgContent);
+
+        $bgRect = '<rect class="favicon-bg" x="0" y="0" width="'.$width.'" height="'.$height.'"/>';
+
+        if (preg_match('/<\/style>/i', $svgContent)) {
+            return preg_replace('/(<\/style>)/i', '$1'.$bgRect, $svgContent, 1);
+        }
+
+        return preg_replace('/(<svg[^>]*>)/i', '$1'.$bgRect, $svgContent, 1);
+    }
+
+    /**
+     * Extract width and height dimensions from SVG content.
+     *
+     * @return array{width: float, height: float}
+     */
+    protected function extractDimensions(string $svgContent): array
+    {
+        if (preg_match('/viewBox=["\']([^"\']+)["\']/', $svgContent, $matches)) {
+            $viewBox = array_map('floatval', preg_split('/[\s,]+/', trim($matches[1])));
+            if (count($viewBox) >= 4) {
+                return ['width' => $viewBox[2], 'height' => $viewBox[3]];
+            }
+        }
+
+        if (preg_match('/width=["\'](\d+)["\']/', $svgContent, $wMatch) &&
+            preg_match('/height=["\'](\d+)["\']/', $svgContent, $hMatch)) {
+            return ['width' => (float) $wMatch[1], 'height' => (float) $hMatch[1]];
+        }
+
+        return ['width' => 100.0, 'height' => 100.0];
     }
 
     protected function getDarkModeStyle(string $style, string $color): string
@@ -76,7 +257,7 @@ SVG;
         }
 
         $brightnessScale = $hsl['l'] / 50;
-        if ($brightnessScale !== 1.0) {
+        if (abs($brightnessScale - 1.0) > 0.001) {
             $filters[] = "brightness({$brightnessScale})";
         }
 

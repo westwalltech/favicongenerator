@@ -1,8 +1,17 @@
 {
     "name": "westwalltech/favicon-generator",
-    "description": "Modern favicon generator for Statamic 6 with dark mode SVG and PWA manifest support",
-    "version": "1.0.0",
-    "keywords": ["statamic", "favicon", "pwa", "webmanifest", "statamic-addon", "dark-mode"],
+    "description": "Modern favicon generator for Statamic 6 with dark mode SVG, maskable icons, and PWA manifest support",
+    "keywords": [
+        "statamic",
+        "statamic-addon",
+        "favicon",
+        "pwa",
+        "webmanifest",
+        "dark-mode",
+        "maskable-icons",
+        "apple-touch-icon",
+        "web-app"
+    ],
     "license": "MIT",
     "type": "statamic-addon",
     "homepage": "https://github.com/westwalltech/favicongenerator",
@@ -18,7 +27,7 @@
         "source": "https://github.com/westwalltech/favicongenerator"
     },
     "require": {
-        "php": "^8.5",
+        "php": "^8.4",
         "statamic/cms": "^6.0",
         "intervention/image-laravel": "^1.0"
     },
@@ -47,7 +56,7 @@
     "extra": {
         "statamic": {
             "name": "Favicon Generator",
-            "description": "Modern favicon generator with dark mode SVG and PWA manifest"
+            "description": "Generate modern favicons with dark mode SVG, maskable icons, and PWA manifest from a single source image"
         },
         "laravel": {
             "providers": [

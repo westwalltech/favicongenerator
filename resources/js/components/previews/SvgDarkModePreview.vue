@@ -93,10 +93,31 @@ export default {
                 ? `style="width:100%;height:100%;filter:${filterValue}"`
                 : 'style="width:100%;height:100%"';
 
-            return content
-                .replace(/<svg/, `<svg ${style}`)
-                .replace(/width="32"/, '')
-                .replace(/height="32"/, '');
+            // Extract width and height to create viewBox if missing
+            let prepared = content;
+
+            // Replace currentColor with black so the icon is visible in preview
+            prepared = prepared.replace(/currentColor/g, '#000000');
+
+            // Check if viewBox is missing and add it based on width/height
+            if (!prepared.includes('viewBox')) {
+                const widthMatch = prepared.match(/width="(\d+)"/);
+                const heightMatch = prepared.match(/height="(\d+)"/);
+                if (widthMatch && heightMatch) {
+                    const w = widthMatch[1];
+                    const h = heightMatch[1];
+                    prepared = prepared.replace(/<svg/, `<svg viewBox="0 0 ${w} ${h}"`);
+                }
+            }
+
+            // Remove fixed width/height so it can scale with CSS
+            prepared = prepared.replace(/\s*width="\d+"/g, '');
+            prepared = prepared.replace(/\s*height="\d+"/g, '');
+
+            // Add style for sizing and optional filter
+            prepared = prepared.replace(/<svg/, `<svg ${style}`);
+
+            return prepared;
         },
     },
 };

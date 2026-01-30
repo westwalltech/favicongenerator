@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-01-30
+
+### Added
+
+- **Maskable icons** for Android adaptive icons (icon-192-maskable.png, icon-512-maskable.png)
+- **Enhanced PWA manifest** with `start_url`, `scope`, `orientation`, and maskable icon entries
+- **Cache busting** support via `{{ favicon cache_bust="true" }}` parameter
+- **Microsoft meta tags** in favicon output (`msapplication-TileColor`, `msapplication-config`)
+- **`{{ favicon:microsoft }}`** Antlers tag for Microsoft-specific meta tags
+- **favicon-96x96.png** for high-DPI browser tabs
+- **Custom icon colors** - Set specific colors for light and dark modes on SVG icons
+- **Icon padding** - Add padding around icons (0-40%)
+- **Background colors** - Set light/dark mode backgrounds or use transparency
+- **Manifest auto-update** - Settings changes update the manifest without regenerating images
+- Comprehensive test suite for Favicon tag (13 new tests)
+
+### Changed
+
+- Manifest now includes 4 icons (regular + maskable) instead of 2
+- Improved code organization with extracted constants and helper methods
+- Reduced frontend bundle size through code deduplication
+
+### Fixed
+
+- Missing `png_dark_background` in generation options
+- Duplicate validation rules consolidated into constants
+- SVG XSS protection via sanitization
+
 ## [1.0.0] - 2026-01-29
 
 ### Added

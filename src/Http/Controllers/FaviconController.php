@@ -19,24 +19,47 @@ class FaviconController extends Controller
     private const GENERATED_FILES = [
         'favicon.ico',
         'favicon.svg',
+        'favicon-96x96.png',
         'apple-touch-icon.png',
         'icon-192.png',
         'icon-512.png',
+        'icon-192-maskable.png',
+        'icon-512-maskable.png',
         'site.webmanifest',
     ];
 
     private const FILE_METADATA = [
-        ['name' => 'favicon.ico', 'dimensions' => '32x32', 'type' => 'image'],
+        ['name' => 'favicon.ico', 'dimensions' => '16x16, 32x32, 48x48', 'type' => 'image'],
         ['name' => 'favicon.svg', 'dimensions' => 'Scalable', 'type' => 'image'],
+        ['name' => 'favicon-96x96.png', 'dimensions' => '96x96', 'type' => 'image'],
         ['name' => 'apple-touch-icon.png', 'dimensions' => '180x180', 'type' => 'image'],
         ['name' => 'icon-192.png', 'dimensions' => '192x192', 'type' => 'image'],
         ['name' => 'icon-512.png', 'dimensions' => '512x512', 'type' => 'image'],
+        ['name' => 'icon-192-maskable.png', 'dimensions' => '192x192 (maskable)', 'type' => 'image'],
+        ['name' => 'icon-512-maskable.png', 'dimensions' => '512x512 (maskable)', 'type' => 'image'],
         ['name' => 'site.webmanifest', 'dimensions' => null, 'type' => 'json'],
+    ];
+
+    private const VALIDATION_RULES = [
+        'theme_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'background_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'app_name' => 'required|string|max:255',
+        'app_short_name' => 'nullable|string|max:12',
+        'dark_mode_style' => 'nullable|string|in:invert,lighten,custom,none',
+        'dark_mode_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'icon_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'dark_mode_icon_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'use_custom_icon_color' => 'nullable|boolean',
+        'icon_padding' => 'nullable|integer|min:0|max:40',
+        'png_background' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'png_dark_background' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+        'png_transparent' => 'nullable|boolean',
     ];
 
     public function index(): Response
     {
         $settings = $this->getSettings();
+        $canProcessSvg = GenerateFavicons::canProcessSvg();
 
         return Inertia::render('favicon-generator::FaviconGenerator', [
             'settings' => $settings,
@@ -44,53 +67,70 @@ class FaviconController extends Controller
             'assetContainers' => $this->getAssetContainers(),
             'assetFieldConfig' => $this->getAssetFieldConfig(),
             'assetFieldMeta' => $this->getAssetFieldMeta($settings['source_asset'] ?? null),
+            'canProcessSvg' => $canProcessSvg,
         ]);
     }
 
-    public function generate(Request $request, GenerateFavicons $action): RedirectResponse
+    public function generate(Request $request, GenerateFavicons $action): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'source_asset' => 'required|string',
-            'theme_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'background_color' => 'required|string|regex:/^#[0-9A-Fa-f]{6}$/',
-            'app_name' => 'required|string|max:255',
-            'app_short_name' => 'nullable|string|max:12',
-            'dark_mode_style' => 'nullable|string|in:invert,lighten,custom,none',
-            'dark_mode_color' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+            ...self::VALIDATION_RULES,
         ]);
 
         $asset = Asset::find($validated['source_asset']);
 
         if (! $asset) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Source image not found'], 422);
+            }
+
             return back()->withErrors(['source_asset' => 'Source image not found']);
         }
 
         $extension = strtolower($asset->extension());
-        if (! in_array($extension, ['png', 'jpg', 'jpeg'])) {
-            return back()->withErrors(['source_asset' => 'Source image must be PNG or JPG format']);
+        $canProcessSvg = GenerateFavicons::canProcessSvg();
+        $allowedExtensions = ['png', 'jpg', 'jpeg'];
+
+        if ($canProcessSvg) {
+            $allowedExtensions[] = 'svg';
         }
 
-        $dimensions = $asset->dimensions();
-        if (! $dimensions || $dimensions[0] < 512 || $dimensions[1] < 512) {
-            return back()->withErrors(['source_asset' => 'Image must be at least 512x512 pixels']);
+        if (! in_array($extension, $allowedExtensions)) {
+            $formats = $canProcessSvg ? 'PNG, JPG, or SVG' : 'PNG or JPG';
+
+            if ($request->wantsJson()) {
+                return response()->json(['error' => "Source image must be {$formats} format"], 422);
+            }
+
+            return back()->withErrors(['source_asset' => "Source image must be {$formats} format"]);
+        }
+
+        // For raster images, check minimum dimensions
+        if ($extension !== 'svg') {
+            $dimensions = $asset->dimensions();
+            if (! $dimensions || $dimensions[0] < 512 || $dimensions[1] < 512) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'Image must be at least 512x512 pixels'], 422);
+                }
+
+                return back()->withErrors(['source_asset' => 'Image must be at least 512x512 pixels']);
+            }
         }
 
         $action(
             sourcePath: $asset->resolvedPath(),
-            options: [
-                'theme_color' => $validated['theme_color'],
-                'background_color' => $validated['background_color'],
-                'app_name' => $validated['app_name'],
-                'app_short_name' => $validated['app_short_name'] ?? substr($validated['app_name'], 0, 12),
-                'dark_mode_style' => $validated['dark_mode_style'] ?? 'invert',
-                'dark_mode_color' => $validated['dark_mode_color'] ?? '#ffffff',
-            ]
+            options: $this->buildGenerationOptions($validated)
         );
 
-        $this->saveSettings([
+        $this->saveSettingsToFile([
             ...$validated,
             'generated_at' => now()->toIso8601String(),
         ]);
+
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'Favicons generated successfully!']);
+        }
 
         return back()->with('success', 'Favicons generated successfully!');
     }
@@ -103,7 +143,75 @@ class FaviconController extends Controller
         ]);
     }
 
-    public function clear(): RedirectResponse
+    public function saveSettings(Request $request): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'source_asset' => 'nullable|string',
+            ...self::VALIDATION_RULES,
+        ]);
+
+        // Get existing settings to preserve generated_at
+        $existingSettings = $this->getSettings();
+
+        $this->saveSettingsToFile([
+            ...$validated,
+            'generated_at' => $existingSettings['generated_at'] ?? null,
+        ]);
+
+        // Update manifest if it exists (so theme_color, app_name etc. are updated without regenerating images)
+        $this->updateManifestIfExists($validated);
+
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'Settings saved']);
+        }
+
+        return back()->with('success', 'Settings saved');
+    }
+
+    protected function updateManifestIfExists(array $settings): void
+    {
+        $outputPath = config('favicon-generator.output_path', public_path());
+        $manifestPath = $outputPath.'/site.webmanifest';
+
+        if (! file_exists($manifestPath)) {
+            return;
+        }
+
+        $manifest = json_decode(file_get_contents($manifestPath), true);
+
+        if (! $manifest) {
+            return;
+        }
+
+        // Update manifest fields from settings
+        $manifest['name'] = $settings['app_name'];
+        $manifest['short_name'] = $settings['app_short_name'] ?? substr($settings['app_name'], 0, 12);
+        $manifest['theme_color'] = $settings['theme_color'];
+        $manifest['background_color'] = $settings['background_color'];
+
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    protected function buildGenerationOptions(array $validated): array
+    {
+        return [
+            'theme_color' => $validated['theme_color'],
+            'background_color' => $validated['background_color'],
+            'app_name' => $validated['app_name'],
+            'app_short_name' => $validated['app_short_name'] ?? substr($validated['app_name'], 0, 12),
+            'dark_mode_style' => $validated['dark_mode_style'] ?? 'invert',
+            'dark_mode_color' => $validated['dark_mode_color'] ?? '#ffffff',
+            'icon_color' => $validated['icon_color'] ?? '#000000',
+            'dark_mode_icon_color' => $validated['dark_mode_icon_color'] ?? '#ffffff',
+            'use_custom_icon_color' => $validated['use_custom_icon_color'] ?? false,
+            'icon_padding' => $validated['icon_padding'] ?? 0,
+            'png_background' => $validated['png_background'] ?? '#ffffff',
+            'png_dark_background' => $validated['png_dark_background'] ?? '#1a1a1a',
+            'png_transparent' => $validated['png_transparent'] ?? true,
+        ];
+    }
+
+    public function clear(Request $request): JsonResponse|RedirectResponse
     {
         $outputPath = config('favicon-generator.output_path', public_path());
 
@@ -112,6 +220,10 @@ class FaviconController extends Controller
             if (file_exists($path)) {
                 unlink($path);
             }
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'Generated files removed']);
         }
 
         return back()->with('success', 'Generated files removed');
@@ -211,7 +323,7 @@ class FaviconController extends Controller
         return YAML::file($path)->parse();
     }
 
-    protected function saveSettings(array $settings): void
+    protected function saveSettingsToFile(array $settings): void
     {
         $path = base_path(config('favicon-generator.settings_path'));
         $dir = dirname($path);

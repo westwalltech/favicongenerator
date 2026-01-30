@@ -19,6 +19,12 @@ abstract class TestCase extends BaseTestCase
         mkdir($this->testOutputPath, 0755, true);
 
         config(['favicon-generator.output_path' => $this->testOutputPath]);
+
+        // Configure filesystem disk for Statamic YAML
+        config(['filesystems.disks.standard' => [
+            'driver' => 'local',
+            'root' => base_path(),
+        ]]);
     }
 
     protected function tearDown(): void
@@ -47,6 +53,20 @@ abstract class TestCase extends BaseTestCase
         $path = $this->testOutputPath.'/source.png';
         imagepng($image, $path);
         imagedestroy($image);
+
+        return $path;
+    }
+
+    protected function createTestSvg(): string
+    {
+        $svg = <<<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect fill="currentColor" width="100" height="100"/>
+</svg>
+SVG;
+
+        $path = $this->testOutputPath.'/source.svg';
+        file_put_contents($path, $svg);
 
         return $path;
     }

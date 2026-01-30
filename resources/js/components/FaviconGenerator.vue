@@ -38,7 +38,9 @@
                     <div class="space-y-4">
                         <div>
                             <Label>Source Image</Label>
-                            <Description class="mb-3">PNG or JPG, minimum 512x512px required</Description>
+                            <Description class="mb-3">
+                                {{ canProcessSvg ? 'SVG, PNG, or JPG' : 'PNG or JPG' }}, minimum 512x512px for raster images
+                            </Description>
 
                             <!-- Asset Field using Statamic PublishContainer -->
                             <PublishContainer
@@ -150,7 +152,152 @@
                     </div>
                 </div>
             </Card>
-            <PanelFooter>
+
+            <!-- Icon Customization Section -->
+            <Card class="mt-4">
+                <div class="flex items-center justify-between mb-4">
+                    <Heading text="Icon Customization" :level="3" />
+                </div>
+
+                <!-- Live Preview -->
+                <div v-if="sourceAssetUrl" class="mb-6 p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
+                    <p class="text-sm font-medium text-gray-600 dark:text-dark-200 mb-3">Live Preview</p>
+                    <IconCustomizationPreview
+                        :svg-url="sourceAssetUrl"
+                        :icon-color="form.icon_color"
+                        :dark-mode-icon-color="form.dark_mode_icon_color"
+                        :use-custom-icon-color="form.use_custom_icon_color"
+                        :icon-padding="form.icon_padding"
+                        :png-background="form.png_background"
+                        :png-dark-background="form.png_dark_background"
+                        :png-transparent="form.png_transparent"
+                    />
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Icon Color -->
+                    <div>
+                        <Label>{{ form.use_custom_icon_color ? 'Icon Color (Light Mode)' : 'Icon Color' }}</Label>
+                        <Description class="mb-2">Override fill color for monochrome SVGs</Description>
+                        <div class="flex gap-2">
+                            <input
+                                type="color"
+                                v-model="form.icon_color"
+                                class="w-12 h-10 rounded cursor-pointer border dark:border-dark-600"
+                                :disabled="!form.use_custom_icon_color"
+                            />
+                            <Input
+                                v-model="form.icon_color"
+                                type="text"
+                                class="flex-1 font-mono text-sm"
+                                :disabled="!form.use_custom_icon_color"
+                            />
+                        </div>
+                        <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                v-model="form.use_custom_icon_color"
+                                class="rounded border-gray-300 dark:border-dark-600"
+                            />
+                            <span class="text-sm text-gray-600 dark:text-dark-200">Use custom color</span>
+                        </label>
+                        <!-- Dark Mode Icon Color -->
+                        <div v-if="form.use_custom_icon_color" class="mt-4 pt-4 border-t dark:border-dark-600">
+                            <Label>Icon Color (Dark Mode)</Label>
+                            <Description class="mb-2">Color used in SVG favicon for dark mode</Description>
+                            <div class="flex gap-2">
+                                <input
+                                    type="color"
+                                    v-model="form.dark_mode_icon_color"
+                                    class="w-12 h-10 rounded cursor-pointer border dark:border-dark-600"
+                                />
+                                <Input
+                                    v-model="form.dark_mode_icon_color"
+                                    type="text"
+                                    class="flex-1 font-mono text-sm"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Padding -->
+                    <div>
+                        <Label>Icon Padding</Label>
+                        <Description class="mb-2">Space around the icon ({{ form.icon_padding }}%)</Description>
+                        <div class="flex items-center gap-3">
+                            <input
+                                type="range"
+                                v-model.number="form.icon_padding"
+                                min="0"
+                                max="40"
+                                step="5"
+                                class="flex-1 h-2 bg-gray-200 dark:bg-dark-600 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <Input
+                                v-model.number="form.icon_padding"
+                                type="number"
+                                min="0"
+                                max="40"
+                                class="w-20 font-mono text-sm text-center"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- PNG Background -->
+                    <div>
+                        <Label>{{ form.use_custom_icon_color && !form.png_transparent ? 'PNG Background (Light)' : 'PNG Background' }}</Label>
+                        <Description class="mb-2">Background color for PNG icons</Description>
+                        <div class="flex gap-2">
+                            <input
+                                type="color"
+                                v-model="form.png_background"
+                                class="w-12 h-10 rounded cursor-pointer border dark:border-dark-600"
+                                :disabled="form.png_transparent"
+                            />
+                            <Input
+                                v-model="form.png_background"
+                                type="text"
+                                class="flex-1 font-mono text-sm"
+                                :disabled="form.png_transparent"
+                            />
+                        </div>
+                        <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                v-model="form.png_transparent"
+                                class="rounded border-gray-300 dark:border-dark-600"
+                            />
+                            <span class="text-sm text-gray-600 dark:text-dark-200">Transparent background</span>
+                        </label>
+                        <!-- Dark Mode PNG Background -->
+                        <div v-if="form.use_custom_icon_color && !form.png_transparent" class="mt-4 pt-4 border-t dark:border-dark-600">
+                            <Label>PNG Background (Dark)</Label>
+                            <Description class="mb-2">Background for dark mode preview</Description>
+                            <div class="flex gap-2">
+                                <input
+                                    type="color"
+                                    v-model="form.png_dark_background"
+                                    class="w-12 h-10 rounded cursor-pointer border dark:border-dark-600"
+                                />
+                                <Input
+                                    v-model="form.png_dark_background"
+                                    type="text"
+                                    class="flex-1 font-mono text-sm"
+                                />
+                            </div>
+                            <p class="text-xs text-gray-400 dark:text-dark-400 mt-2">
+                                Note: PNGs are static files. Dark mode preview shows how icons appear on dark backgrounds.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </Card>
+            <PanelFooter class="flex gap-2">
+                <Button
+                    @click="save"
+                    :loading="saving"
+                    text="Save Settings"
+                />
                 <Button
                     @click="generate"
                     :loading="generating"
@@ -161,79 +308,14 @@
             </PanelFooter>
         </Panel>
 
-        <!-- Preview Section -->
+        <!-- Generated Files Section -->
         <template v-if="hasFiles">
-            <div class="border-t dark:border-dark-600 pt-6 mt-6">
-                <Heading :level="2" class="mb-6">Preview</Heading>
-            </div>
-
-            <!-- Browser Tab Preview -->
-            <Panel>
-                <PanelHeader>
-                    <Heading text="Browser Tab Preview" />
-                </PanelHeader>
-                <Card>
-                    <BrowserTabPreview
-                        :favicon-url="previewUrls.ico"
-                        :site-name="form.app_name || 'My Website'"
-                    />
-                </Card>
-            </Panel>
-
-            <!-- SVG Dark Mode Preview -->
-            <Panel>
-                <PanelHeader class="flex items-center justify-between">
-                    <Heading text="SVG Favicon (with Dark Mode)" />
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <span class="text-sm text-gray-600 dark:text-dark-200">Preview Dark Mode</span>
-                        <Switch v-model="darkModePreview" />
-                    </label>
-                </PanelHeader>
-                <Card>
-                    <SvgDarkModePreview
-                        :svg-url="previewUrls.svg"
-                        :dark-mode="darkModePreview"
-                    />
-                </Card>
-            </Panel>
-
-            <!-- iOS Preview -->
-            <Panel>
-                <PanelHeader>
-                    <Heading text="iOS Home Screen" />
-                </PanelHeader>
-                <Card>
-                    <AppleTouchPreview
-                        :icon-url="previewUrls.apple"
-                        :app-name="form.app_short_name || form.app_name || 'App'"
-                        :dark-mode-style="form.dark_mode_style"
-                        :dark-mode-color="form.dark_mode_color"
-                    />
-                </Card>
-            </Panel>
-
-            <!-- Android/PWA Preview -->
-            <Panel>
-                <PanelHeader>
-                    <Heading text="Android / PWA" />
-                </PanelHeader>
-                <Card>
-                    <AndroidPwaPreview
-                        :icon-192-url="previewUrls.icon192"
-                        :icon-512-url="previewUrls.icon512"
-                        :app-name="form.app_short_name || form.app_name || 'App'"
-                        :theme-color="form.theme_color"
-                        :background-color="form.background_color"
-                    />
-                </Card>
-            </Panel>
-
             <!-- Generated Files Table -->
             <Panel>
                 <PanelHeader>
                     <Heading text="Generated Files" />
                 </PanelHeader>
-                <Card>
+                <Card inset class="overflow-hidden">
                     <FileListTable :files="generatedFiles" />
                 </Card>
             </Panel>
@@ -243,8 +325,8 @@
                 <PanelHeader>
                     <Heading text="HTML Output" />
                 </PanelHeader>
-                <Card>
-                    <HtmlOutputPreview :theme-color="form.theme_color" />
+                <Card inset>
+                    <HtmlOutputPreview :theme-color="form.theme_color" :app-name="form.app_name" :generated-at="settings.generated_at" />
                 </Card>
             </Panel>
         </template>
@@ -264,18 +346,14 @@ import {
     Card,
     Button,
     Input,
-    Switch,
     Select,
     PublishContainer,
     PublishFieldsProvider,
     PublishFields,
 } from '@statamic/cms/ui';
-import BrowserTabPreview from './previews/BrowserTabPreview.vue';
-import SvgDarkModePreview from './previews/SvgDarkModePreview.vue';
-import AppleTouchPreview from './previews/AppleTouchPreview.vue';
-import AndroidPwaPreview from './previews/AndroidPwaPreview.vue';
 import FileListTable from './previews/FileListTable.vue';
 import HtmlOutputPreview from './previews/HtmlOutputPreview.vue';
+import IconCustomizationPreview from './previews/IconCustomizationPreview.vue';
 
 const DARK_MODE_OPTIONS = [
     { value: 'invert', label: 'Invert colors' },
@@ -299,17 +377,13 @@ export default {
         Card,
         Button,
         Input,
-        Switch,
         Select,
         PublishContainer,
         PublishFieldsProvider,
         PublishFields,
-        BrowserTabPreview,
-        SvgDarkModePreview,
-        AppleTouchPreview,
-        AndroidPwaPreview,
         FileListTable,
         HtmlOutputPreview,
+        IconCustomizationPreview,
     },
 
     props: {
@@ -318,6 +392,7 @@ export default {
         assetContainers: { type: Array, default: () => [] },
         assetFieldConfig: { type: Object, default: null },
         assetFieldMeta: { type: Object, default: null },
+        canProcessSvg: { type: Boolean, default: false },
     },
 
     data() {
@@ -330,12 +405,20 @@ export default {
                 app_short_name: this.settings.app_short_name ?? '',
                 dark_mode_style: this.settings.dark_mode_style ?? 'invert',
                 dark_mode_color: this.settings.dark_mode_color ?? '#ffffff',
+                // Icon customization
+                icon_color: this.settings.icon_color ?? '#000000',
+                dark_mode_icon_color: this.settings.dark_mode_icon_color ?? '#ffffff',
+                use_custom_icon_color: this.settings.use_custom_icon_color ?? false,
+                icon_padding: this.settings.icon_padding ?? 0,
+                png_background: this.settings.png_background ?? '#ffffff',
+                png_dark_background: this.settings.png_dark_background ?? '#1a1a1a',
+                png_transparent: this.settings.png_transparent ?? true,
             },
             darkModeOptions: DARK_MODE_OPTIONS,
             emptyBlueprint: EMPTY_BLUEPRINT,
             generating: false,
+            saving: false,
             clearing: false,
-            darkModePreview: false,
             errors: {},
         };
     },
@@ -347,20 +430,6 @@ export default {
 
         cacheKey() {
             return this.generatedFiles[0]?.modified || Date.now();
-        },
-
-        previewUrls() {
-            if (!this.hasFiles) {
-                return {};
-            }
-            const ts = this.cacheKey;
-            return {
-                ico: `/favicon.ico?v=${ts}`,
-                svg: `/favicon.svg?v=${ts}`,
-                apple: `/apple-touch-icon.png?v=${ts}`,
-                icon192: `/icon-192.png?v=${ts}`,
-                icon512: `/icon-512.png?v=${ts}`,
-            };
         },
 
         isAssetsField() {
@@ -388,6 +457,18 @@ export default {
         assetFieldMetaData() {
             return { source_asset: this.assetFieldMeta || {} };
         },
+
+        sourceAssetUrl() {
+            // Get the URL from the asset meta if available
+            if (this.assetFieldMeta?.data?.[0]?.url) {
+                return this.assetFieldMeta.data[0].url;
+            }
+            // If we have generated files, use the favicon.svg as preview source
+            if (this.hasFiles) {
+                return `/favicon.svg?v=${this.cacheKey}`;
+            }
+            return null;
+        },
     },
 
     methods: {
@@ -396,12 +477,30 @@ export default {
             this.form.source_asset = assets[0] || null;
         },
 
+        async save() {
+            this.saving = true;
+            this.errors = {};
+
+            try {
+                await this.$axios.post('/cp/favicon-generator/save', this.form);
+                this.$toast.success('Settings saved');
+            } catch (error) {
+                if (error.response?.status === 422) {
+                    this.errors = error.response.data.errors || {};
+                } else {
+                    this.$toast.error('Failed to save settings');
+                }
+            } finally {
+                this.saving = false;
+            }
+        },
+
         async generate() {
             this.generating = true;
             this.errors = {};
 
             try {
-                await this.$axios.post('/cp/westwalltech/favicon-generator/generate', this.form);
+                await this.$axios.post('/cp/favicon-generator/generate', this.form);
                 window.location.reload();
             } catch (error) {
                 if (error.response?.status === 422) {
@@ -422,7 +521,7 @@ export default {
             this.clearing = true;
 
             try {
-                await this.$axios.post('/cp/westwalltech/favicon-generator/clear');
+                await this.$axios.post('/cp/favicon-generator/clear');
                 window.location.reload();
             } catch (error) {
                 this.$toast.error('Failed to remove files');
