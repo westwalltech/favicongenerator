@@ -47,6 +47,7 @@
                                 v-if="isAssetsField"
                                 :model-value="assetFieldValues"
                                 @update:model-value="onAssetFieldUpdate"
+                                @update:meta="onAssetMetaUpdate"
                                 :meta="assetFieldMetaData"
                                 :blueprint="emptyBlueprint"
                                 :track-dirty-state="false"
@@ -420,7 +421,23 @@ export default {
             saving: false,
             clearing: false,
             errors: {},
+            selectedAssetUrl: null,
         };
+    },
+
+    watch: {
+        'form.source_asset'(assetId) {
+            if (!assetId) {
+                this.selectedAssetUrl = null;
+            }
+        },
+    },
+
+    mounted() {
+        // Set initial URL from meta if available
+        if (this.assetFieldMeta?.data?.[0]?.url) {
+            this.selectedAssetUrl = this.assetFieldMeta.data[0].url;
+        }
     },
 
     computed: {
@@ -459,7 +476,11 @@ export default {
         },
 
         sourceAssetUrl() {
-            // Get the URL from the asset meta if available
+            // Use the selected asset URL if available
+            if (this.selectedAssetUrl) {
+                return this.selectedAssetUrl;
+            }
+            // Fallback: get URL from asset meta
             if (this.assetFieldMeta?.data?.[0]?.url) {
                 return this.assetFieldMeta.data[0].url;
             }
@@ -475,6 +496,14 @@ export default {
         onAssetFieldUpdate(values) {
             const assets = values.source_asset || [];
             this.form.source_asset = assets[0] || null;
+        },
+
+        onAssetMetaUpdate(meta) {
+            // Extract URL from the updated meta data
+            const assetData = meta?.source_asset?.data?.[0];
+            if (assetData?.url) {
+                this.selectedAssetUrl = assetData.url;
+            }
         },
 
         async save() {
