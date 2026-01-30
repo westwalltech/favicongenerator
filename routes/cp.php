@@ -9,4 +9,5 @@ Route::prefix('favicon-generator')->group(function () {
     Route::post('/save', [FaviconController::class, 'saveSettings'])->name('favicon-generator.save');
     Route::get('/preview', [FaviconController::class, 'preview'])->name('favicon-generator.preview');
     Route::post('/clear', [FaviconController::class, 'clear'])->name('favicon-generator.clear');
+    Route::get('/asset-url', [FaviconController::class, 'getAssetUrl'])->name('favicon-generator.asset-url');
 });

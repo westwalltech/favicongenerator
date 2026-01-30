@@ -426,18 +426,22 @@ export default {
     },
 
     watch: {
-        'form.source_asset'(assetId) {
-            if (!assetId) {
-                this.selectedAssetUrl = null;
-            }
+        'form.source_asset': {
+            immediate: true,
+            async handler(assetId, oldAssetId) {
+                if (!assetId) {
+                    this.selectedAssetUrl = null;
+                    return;
+                }
+                // On initial load, check if we have URL from meta
+                if (!oldAssetId && this.assetFieldMeta?.data?.[0]?.url) {
+                    this.selectedAssetUrl = this.assetFieldMeta.data[0].url;
+                    return;
+                }
+                // Fetch asset URL from our endpoint
+                await this.fetchAssetUrl(assetId);
+            },
         },
-    },
-
-    mounted() {
-        // Set initial URL from meta if available
-        if (this.assetFieldMeta?.data?.[0]?.url) {
-            this.selectedAssetUrl = this.assetFieldMeta.data[0].url;
-        }
     },
 
     computed: {
@@ -503,6 +507,18 @@ export default {
             const assetData = meta?.source_asset?.data?.[0];
             if (assetData?.url) {
                 this.selectedAssetUrl = assetData.url;
+            }
+        },
+
+        async fetchAssetUrl(assetId) {
+            try {
+                const response = await this.$axios.get('/cp/favicon-generator/asset-url', {
+                    params: { asset: assetId }
+                });
+                this.selectedAssetUrl = response.data.url;
+            } catch (error) {
+                console.error('Failed to fetch asset URL:', error);
+                this.selectedAssetUrl = null;
             }
         },
 

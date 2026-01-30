@@ -229,6 +229,23 @@ class FaviconController extends Controller
         return back()->with('success', 'Generated files removed');
     }
 
+    public function getAssetUrl(Request $request): JsonResponse
+    {
+        $assetId = $request->get('asset');
+
+        if (! $assetId) {
+            return response()->json(['url' => null]);
+        }
+
+        $asset = Asset::find($assetId);
+
+        if (! $asset) {
+            return response()->json(['url' => null]);
+        }
+
+        return response()->json(['url' => $asset->url()]);
+    }
+
     protected function getAssetFieldConfig(): array
     {
         $container = config('favicon-generator.assets.container');
