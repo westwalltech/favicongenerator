@@ -593,7 +593,7 @@
                 <PanelHeader>
                     <Heading text="Generated Files" />
                 </PanelHeader>
-                <Card inset class="overflow-hidden">
+                <Card flush>
                     <FileListTable :files="generatedFiles" />
                 </Card>
             </Panel>
@@ -603,7 +603,7 @@
                 <PanelHeader>
                     <Heading text="HTML Output" />
                 </PanelHeader>
-                <Card inset>
+                <Card flush>
                     <HtmlOutputPreview :theme-color="form.theme_color" :app-name="form.app_name" :generated-at="settings.generated_at" />
                 </Card>
             </Panel>

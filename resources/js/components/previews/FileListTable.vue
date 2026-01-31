@@ -18,8 +18,7 @@
                 >
                     <td class="px-4 py-3">
                         <div
-                            class="w-10 h-10 rounded flex items-center justify-center overflow-hidden border border-gray-200 dark:border-dark-600"
-                            :style="previewBackgroundStyle"
+                            class="w-10 h-10 rounded flex items-center justify-center overflow-hidden border border-gray-200 dark:border-dark-600 checkerboard-bg"
                         >
                             <img
                                 v-if="file.type === 'image'"
@@ -87,14 +86,7 @@ export default {
         };
     },
 
-    computed: {
-        previewBackgroundStyle() {
-            // Use checkerboard pattern for transparency indication
-            return {
-                background: 'repeating-conic-gradient(#e5e5e5 0% 25%, #f5f5f5 0% 50%) 50% / 8px 8px',
-            };
-        },
-    },
+    computed: {},
 
     methods: {
         formatSize,
@@ -112,3 +104,14 @@ export default {
     },
 };
 </script>
+
+<style scoped>
+.checkerboard-bg {
+    background: repeating-conic-gradient(#e5e5e5 0% 25%, #f5f5f5 0% 50%) 50% / 8px 8px;
+}
+
+:root.dark .checkerboard-bg,
+.dark .checkerboard-bg {
+    background: repeating-conic-gradient(#374151 0% 25%, #4b5563 0% 50%) 50% / 8px 8px;
+}
+</style>
