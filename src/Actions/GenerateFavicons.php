@@ -1278,15 +1278,32 @@ class GenerateFavicons
         }
 
         try {
-            // Try to find the asset by the path
-            // The path might be in format "container::path" or just "path"
-            $asset = \Statamic\Facades\Asset::find($path);
+            // If path already has container:: prefix, try it directly
+            if (str_contains($path, '::')) {
+                $asset = \Statamic\Facades\Asset::find($path);
+                if ($asset) {
+                    return $asset->absoluteUrl();
+                }
 
-            if ($asset) {
-                return $asset->absoluteUrl();
+                return null;
             }
 
-            // If not found, try common container prefixes
+            // Parse path to extract potential container from first segment
+            // e.g., "media/favicons/favicon.svg" -> container: "media", path: "favicons/favicon.svg"
+            $segments = explode('/', $path, 2);
+
+            if (count($segments) === 2) {
+                $potentialContainer = $segments[0];
+                $assetPath = $segments[1];
+
+                // Try with first segment as container
+                $asset = \Statamic\Facades\Asset::find("{$potentialContainer}::{$assetPath}");
+                if ($asset) {
+                    return $asset->absoluteUrl();
+                }
+            }
+
+            // Fallback: try common container prefixes with full path
             $containers = ['assets', 'media', 'files'];
             foreach ($containers as $container) {
                 $asset = \Statamic\Facades\Asset::find("{$container}::{$path}");
