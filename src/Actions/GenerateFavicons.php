@@ -64,32 +64,43 @@ class GenerateFavicons
             return $this->generateFromEmojiOrText($sourcePath, $outputPath, $options);
         }
 
-        // Load image - use Imagick for SVG, Intervention for raster
-        if ($isSvgSource && $this->hasImagick) {
-            $image = $this->loadSvgWithImagick($sourcePath, $options);
-        } else {
-            $image = Image::read($sourcePath);
+        // Normalize source path - download remote files to temp location if needed
+        $localSourcePath = $this->normalizeSourcePath($sourcePath);
+        $tempSourceFile = $localSourcePath !== $sourcePath ? $localSourcePath : null;
+
+        try {
+            // Load image - use Imagick for SVG, Intervention for raster
+            if ($isSvgSource && $this->hasImagick) {
+                $image = $this->loadSvgWithImagick($localSourcePath, $options);
+            } else {
+                $image = Image::read($localSourcePath);
+            }
+
+            $generatedFiles = [];
+
+            // Generate SVG favicon
+            $generatedFiles[] = $this->generateSvgFavicon($localSourcePath, $outputPath, $options, $isSvgSource);
+
+            // Generate PNG files
+            foreach (self::PNG_SIZES as $spec) {
+                $generatedFiles[] = $this->generatePng($image, $spec['size'], $outputPath.'/'.$spec['name'], $options);
+            }
+
+            // Generate maskable icons for Android adaptive icons (with extra safe zone padding)
+            foreach (self::MASKABLE_SIZES as $spec) {
+                $generatedFiles[] = $this->generateMaskableIcon($image, $spec['size'], $outputPath.'/'.$spec['name'], $options);
+            }
+
+            $generatedFiles[] = $this->generateIcoFile($image, $outputPath, $options);
+            $generatedFiles[] = $this->generateWebManifest($outputPath, $options);
+
+            return $generatedFiles;
+        } finally {
+            // Clean up temp file if we downloaded from remote
+            if ($tempSourceFile && file_exists($tempSourceFile)) {
+                unlink($tempSourceFile);
+            }
         }
-
-        $generatedFiles = [];
-
-        // Generate SVG favicon
-        $generatedFiles[] = $this->generateSvgFavicon($sourcePath, $outputPath, $options, $isSvgSource);
-
-        // Generate PNG files
-        foreach (self::PNG_SIZES as $spec) {
-            $generatedFiles[] = $this->generatePng($image, $spec['size'], $outputPath.'/'.$spec['name'], $options);
-        }
-
-        // Generate maskable icons for Android adaptive icons (with extra safe zone padding)
-        foreach (self::MASKABLE_SIZES as $spec) {
-            $generatedFiles[] = $this->generateMaskableIcon($image, $spec['size'], $outputPath.'/'.$spec['name'], $options);
-        }
-
-        $generatedFiles[] = $this->generateIcoFile($image, $outputPath, $options);
-        $generatedFiles[] = $this->generateWebManifest($outputPath, $options);
-
-        return $generatedFiles;
     }
 
     /**
@@ -734,8 +745,8 @@ class GenerateFavicons
      */
     protected function loadSvgWithImagick(string $svgPath, array $options = []): ImageInterface
     {
-        // Read SVG content and replace currentColor with the appropriate color
-        $svgContent = file_get_contents($svgPath);
+        // Read SVG content from local file or remote URL
+        $svgContent = $this->getFileContents($svgPath);
         $svgContent = $this->prepareSvgForRasterization($svgContent, $options);
 
         // Write prepared SVG to temp file
@@ -1026,7 +1037,7 @@ class GenerateFavicons
 
         if ($isSvgSource) {
             // Source is SVG - copy and apply customizations
-            $svgContent = file_get_contents($sourcePath);
+            $svgContent = $this->getFileContents($sourcePath);
 
             // Check if custom icon colors are enabled
             $useCustomColor = ! empty($options['use_custom_icon_color']);
@@ -1149,5 +1160,144 @@ class GenerateFavicons
         file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         return $manifestPath;
+    }
+
+    /**
+     * Normalize source path - download remote files to temp location if needed.
+     * Handles URLs, Statamic asset paths, and local file paths.
+     */
+    protected function normalizeSourcePath(string $sourcePath): string
+    {
+        // If it's already a URL, download to temp file
+        if ($this->isUrl($sourcePath)) {
+            return $this->downloadToTemp($sourcePath);
+        }
+
+        // If the file exists locally, use it directly
+        if (file_exists($sourcePath)) {
+            return $sourcePath;
+        }
+
+        // Try to resolve as a Statamic asset path
+        $resolvedUrl = $this->resolveAssetUrl($sourcePath);
+        if ($resolvedUrl) {
+            return $this->downloadToTemp($resolvedUrl);
+        }
+
+        // Return as-is and let it fail with a descriptive error
+        return $sourcePath;
+    }
+
+    /**
+     * Get file contents from local path or URL.
+     */
+    protected function getFileContents(string $path): string
+    {
+        // If it's a URL, fetch with context
+        if ($this->isUrl($path)) {
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 30,
+                    'user_agent' => 'FaviconGenerator/1.0',
+                ],
+                'ssl' => [
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
+                ],
+            ]);
+
+            $content = file_get_contents($path, false, $context);
+
+            if ($content === false) {
+                throw new \RuntimeException("Failed to fetch file from URL: {$path}");
+            }
+
+            return $content;
+        }
+
+        // Try local file
+        if (file_exists($path)) {
+            return file_get_contents($path);
+        }
+
+        // Try to resolve as asset URL and fetch
+        $resolvedUrl = $this->resolveAssetUrl($path);
+        if ($resolvedUrl) {
+            return $this->getFileContents($resolvedUrl);
+        }
+
+        throw new \RuntimeException("File not found: {$path}");
+    }
+
+    /**
+     * Check if a path is a URL.
+     */
+    protected function isUrl(string $path): bool
+    {
+        return str_starts_with($path, 'http://') || str_starts_with($path, 'https://');
+    }
+
+    /**
+     * Download a URL to a temp file and return the temp path.
+     */
+    protected function downloadToTemp(string $url): string
+    {
+        $extension = pathinfo(parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'tmp';
+        $tempPath = sys_get_temp_dir().'/favicon-source-'.uniqid().'.'.$extension;
+
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 30,
+                'user_agent' => 'FaviconGenerator/1.0',
+            ],
+            'ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+            ],
+        ]);
+
+        $content = file_get_contents($url, false, $context);
+
+        if ($content === false) {
+            throw new \RuntimeException("Failed to download file from: {$url}");
+        }
+
+        file_put_contents($tempPath, $content);
+
+        return $tempPath;
+    }
+
+    /**
+     * Try to resolve a path as a Statamic asset and return its URL.
+     */
+    protected function resolveAssetUrl(string $path): ?string
+    {
+        // Check if Statamic Asset facade is available
+        if (! class_exists(\Statamic\Facades\Asset::class)) {
+            return null;
+        }
+
+        try {
+            // Try to find the asset by the path
+            // The path might be in format "container::path" or just "path"
+            $asset = \Statamic\Facades\Asset::find($path);
+
+            if ($asset) {
+                return $asset->absoluteUrl();
+            }
+
+            // If not found, try common container prefixes
+            $containers = ['assets', 'media', 'files'];
+            foreach ($containers as $container) {
+                $asset = \Statamic\Facades\Asset::find("{$container}::{$path}");
+                if ($asset) {
+                    return $asset->absoluteUrl();
+                }
+            }
+        } catch (\Exception $e) {
+            // Silently fail and return null
+        }
+
+        return null;
     }
 }
