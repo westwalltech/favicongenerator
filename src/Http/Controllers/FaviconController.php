@@ -168,7 +168,9 @@ class FaviconController extends Controller
                     }
                 }
 
-                $sourcePath = $asset->resolvedPath();
+                // Use absoluteUrl() for remote storage (S3, DO Spaces, etc.)
+                // The action's normalizeSourcePath() will download it to a temp file
+                $sourcePath = $asset->absoluteUrl();
             }
 
             $generationOptions = $this->buildGenerationOptions($validated);
