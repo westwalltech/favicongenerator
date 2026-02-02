@@ -376,8 +376,12 @@ class GenerateFavicons
         try {
             $imagick = new Imagick();
             $imagick->setBackgroundColor(new \ImagickPixel('transparent'));
-            $imagick->setResolution(300, 300);
+            $imagick->setResolution(600, 600);
             $imagick->readImageBlob($svgContent);
+
+            // Ensure RGBA colorspace (not grayscale)
+            $imagick->setImageColorspace(Imagick::COLORSPACE_SRGB);
+            $imagick->setImageType(Imagick::IMGTYPE_TRUECOLORALPHA);
             $imagick->setImageFormat('png32');
 
             // Resize to desired size
@@ -741,22 +745,26 @@ class GenerateFavicons
         try {
             $imagick = new Imagick();
 
-            // Set high resolution before reading for better quality
-            $imagick->setResolution(300, 300);
+            // Set high resolution before reading for better quality (600 DPI for crisp edges)
+            $imagick->setResolution(600, 600);
 
             // Set background to transparent
             $imagick->setBackgroundColor(new \ImagickPixel('transparent'));
 
             $imagick->readImage($tempSvgPath);
 
+            // Ensure RGBA colorspace (not grayscale)
+            $imagick->setImageColorspace(Imagick::COLORSPACE_SRGB);
+            $imagick->setImageType(Imagick::IMGTYPE_TRUECOLORALPHA);
+
             // Convert to PNG format with alpha channel
             $imagick->setImageFormat('png32');
             $imagick->setImageCompressionQuality(100);
 
-            // Ensure minimum size of 512x512 for quality
+            // Ensure minimum size of 1024x1024 for better quality when scaling down
             $width = $imagick->getImageWidth();
             $height = $imagick->getImageHeight();
-            $minSize = 512;
+            $minSize = 1024;
 
             if ($width < $minSize || $height < $minSize) {
                 $scale = max($minSize / $width, $minSize / $height);
@@ -806,6 +814,49 @@ class GenerateFavicons
             '/@media\s*\(\s*prefers-color-scheme:\s*dark\s*\)\s*\{[^}]*\}/i',
             '',
             $svgContent
+        );
+
+        // Add viewBox if missing to prevent edge clipping
+        $svgContent = $this->ensureViewBox($svgContent);
+
+        return $svgContent;
+    }
+
+    /**
+     * Ensure SVG has a viewBox attribute to prevent edge clipping.
+     * Adds slight padding to prevent anti-aliasing artifacts at edges.
+     */
+    protected function ensureViewBox(string $svgContent): string
+    {
+        // Check if viewBox already exists
+        if (preg_match('/viewBox\s*=\s*["\'][^"\']+["\']/', $svgContent)) {
+            return $svgContent;
+        }
+
+        // Extract width and height from SVG
+        $width = 100;
+        $height = 100;
+
+        if (preg_match('/\bwidth\s*=\s*["\']?(\d+(?:\.\d+)?)["\']?/', $svgContent, $wMatch)) {
+            $width = (float) $wMatch[1];
+        }
+        if (preg_match('/\bheight\s*=\s*["\']?(\d+(?:\.\d+)?)["\']?/', $svgContent, $hMatch)) {
+            $height = (float) $hMatch[1];
+        }
+
+        // Add small padding (1%) to prevent edge clipping from anti-aliasing
+        $padding = max($width, $height) * 0.01;
+        $viewBoxX = -$padding;
+        $viewBoxY = -$padding;
+        $viewBoxWidth = $width + ($padding * 2);
+        $viewBoxHeight = $height + ($padding * 2);
+
+        // Insert viewBox after the opening svg tag
+        $svgContent = preg_replace(
+            '/(<svg\s)/i',
+            sprintf('$1viewBox="%.2f %.2f %.2f %.2f" ', $viewBoxX, $viewBoxY, $viewBoxWidth, $viewBoxHeight),
+            $svgContent,
+            1
         );
 
         return $svgContent;
