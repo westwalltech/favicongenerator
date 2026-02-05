@@ -409,7 +409,7 @@ class GenerateFavicons
 
             // Ensure RGBA colorspace (not grayscale)
             $imagick->setImageColorspace(Imagick::COLORSPACE_SRGB);
-            $imagick->setImageType(Imagick::IMGTYPE_TRUECOLORALPHA);
+            $imagick->setImageType(defined('Imagick::IMGTYPE_TRUECOLORALPHA') ? Imagick::IMGTYPE_TRUECOLORALPHA : Imagick::IMGTYPE_TRUECOLORMATTE);
             $imagick->setImageFormat('png32');
 
             // Resize to desired size
@@ -788,7 +788,7 @@ class GenerateFavicons
 
             // Ensure RGBA colorspace (not grayscale)
             $imagick->setImageColorspace(Imagick::COLORSPACE_SRGB);
-            $imagick->setImageType(Imagick::IMGTYPE_TRUECOLORALPHA);
+            $imagick->setImageType(defined('Imagick::IMGTYPE_TRUECOLORALPHA') ? Imagick::IMGTYPE_TRUECOLORALPHA : Imagick::IMGTYPE_TRUECOLORMATTE);
 
             // Convert to PNG format with alpha channel
             $imagick->setImageFormat('png32');
