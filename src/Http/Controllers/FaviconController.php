@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 use Statamic\Facades\Asset;
@@ -106,104 +107,126 @@ class FaviconController extends Controller
         $tempSvgPath = null;
 
         try {
-            // Determine source path based on source type
-            if ($sourceType === 'emoji') {
-                $emoji = $validated['source_emoji'];
-                $svgContent = $svgGenerator->generateFromEmoji($emoji, [
-                    'emoji_background' => 'transparent',
-                ]);
-                $tempSvgPath = sys_get_temp_dir().'/favicon-emoji-'.uniqid().'.svg';
-                file_put_contents($tempSvgPath, $svgContent);
-                $sourcePath = $tempSvgPath;
-            } elseif ($sourceType === 'text') {
-                $text = $validated['source_text'];
-                $svgContent = $svgGenerator->generateFromText($text, [
-                    'text_background_color' => $validated['text_background_color'] ?? $validated['theme_color'],
-                    'text_color' => $validated['text_color'] ?? '#ffffff',
-                    'text_font' => $validated['text_font'] ?? 'system-ui',
-                    'text_weight' => $validated['text_weight'] ?? 'bold',
-                ]);
-                $tempSvgPath = sys_get_temp_dir().'/favicon-text-'.uniqid().'.svg';
-                file_put_contents($tempSvgPath, $svgContent);
-                $sourcePath = $tempSvgPath;
-            } else {
-                // Asset source type
-                $asset = Asset::find($validated['source_asset']);
-
-                if (! $asset) {
-                    if ($request->wantsJson()) {
-                        return response()->json(['error' => 'Source image not found'], 422);
-                    }
-
-                    return back()->withErrors(['source_asset' => 'Source image not found']);
-                }
-
-                $extension = strtolower($asset->extension());
-                $canProcessSvg = GenerateFavicons::canProcessSvg();
-                $allowedExtensions = ['png', 'jpg', 'jpeg'];
-
-                if ($canProcessSvg) {
-                    $allowedExtensions[] = 'svg';
-                }
-
-                if (! in_array($extension, $allowedExtensions)) {
-                    $formats = $canProcessSvg ? 'PNG, JPG, or SVG' : 'PNG or JPG';
-
-                    if ($request->wantsJson()) {
-                        return response()->json(['error' => "Source image must be {$formats} format"], 422);
-                    }
-
-                    return back()->withErrors(['source_asset' => "Source image must be {$formats} format"]);
-                }
-
-                // For raster images, check minimum dimensions
-                if ($extension !== 'svg') {
-                    $dimensions = $asset->dimensions();
-                    if (! $dimensions || $dimensions[0] < 512 || $dimensions[1] < 512) {
-                        if ($request->wantsJson()) {
-                            return response()->json(['error' => 'Image must be at least 512x512 pixels'], 422);
-                        }
-
-                        return back()->withErrors(['source_asset' => 'Image must be at least 512x512 pixels']);
-                    }
-                }
-
-                // Use absoluteUrl() for remote storage (S3, DO Spaces, etc.)
-                // The action's normalizeSourcePath() will download it to a temp file
-                $sourcePath = $asset->absoluteUrl();
-            }
-
-            $generationOptions = $this->buildGenerationOptions($validated);
-            $generationOptions['source_type'] = $sourceType;
-
-            if ($sourceType === 'emoji') {
-                $generationOptions['source_emoji'] = $validated['source_emoji'];
-            } elseif ($sourceType === 'text') {
-                $generationOptions['source_text'] = $validated['source_text'];
-            }
-
-            $action(
-                sourcePath: $sourcePath,
-                options: $generationOptions
-            );
-
-            $this->saveSettingsToFile([
-                ...$validated,
+            return $this->executeGeneration($request, $action, $svgGenerator, $validated, $sourceType, $tempSvgPath);
+        } catch (\Exception $e) {
+            Log::error('[FaviconGenerator] generate: Favicon generation failed', [
                 'source_type' => $sourceType,
-                'generated_at' => now()->toIso8601String(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             if ($request->wantsJson()) {
-                return response()->json(['success' => true, 'message' => 'Favicons generated successfully!']);
+                return response()->json(['error' => 'Favicon generation failed: '.$e->getMessage()], 500);
             }
 
-            return back()->with('success', 'Favicons generated successfully!');
+            return back()->withErrors(['generation' => 'Favicon generation failed: '.$e->getMessage()]);
         } finally {
-            // Clean up temp file
             if ($tempSvgPath && file_exists($tempSvgPath)) {
                 unlink($tempSvgPath);
             }
         }
+    }
+
+    protected function executeGeneration(
+        Request $request,
+        GenerateFavicons $action,
+        SvgGenerator $svgGenerator,
+        array $validated,
+        string $sourceType,
+        ?string &$tempSvgPath,
+    ): JsonResponse|RedirectResponse {
+        // Determine source path based on source type
+        if ($sourceType === 'emoji') {
+            $emoji = $validated['source_emoji'];
+            $svgContent = $svgGenerator->generateFromEmoji($emoji, [
+                'emoji_background' => 'transparent',
+            ]);
+            $tempSvgPath = sys_get_temp_dir().'/favicon-emoji-'.uniqid().'.svg';
+            file_put_contents($tempSvgPath, $svgContent);
+            $sourcePath = $tempSvgPath;
+        } elseif ($sourceType === 'text') {
+            $text = $validated['source_text'];
+            $svgContent = $svgGenerator->generateFromText($text, [
+                'text_background_color' => $validated['text_background_color'] ?? $validated['theme_color'],
+                'text_color' => $validated['text_color'] ?? '#ffffff',
+                'text_font' => $validated['text_font'] ?? 'system-ui',
+                'text_weight' => $validated['text_weight'] ?? 'bold',
+            ]);
+            $tempSvgPath = sys_get_temp_dir().'/favicon-text-'.uniqid().'.svg';
+            file_put_contents($tempSvgPath, $svgContent);
+            $sourcePath = $tempSvgPath;
+        } else {
+            // Asset source type
+            $asset = Asset::find($validated['source_asset']);
+
+            if (! $asset) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'Source image not found'], 422);
+                }
+
+                return back()->withErrors(['source_asset' => 'Source image not found']);
+            }
+
+            $extension = strtolower($asset->extension());
+            $canProcessSvg = GenerateFavicons::canProcessSvg();
+            $allowedExtensions = ['png', 'jpg', 'jpeg'];
+
+            if ($canProcessSvg) {
+                $allowedExtensions[] = 'svg';
+            }
+
+            if (! in_array($extension, $allowedExtensions)) {
+                $formats = $canProcessSvg ? 'PNG, JPG, or SVG' : 'PNG or JPG';
+
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => "Source image must be {$formats} format"], 422);
+                }
+
+                return back()->withErrors(['source_asset' => "Source image must be {$formats} format"]);
+            }
+
+            // For raster images, check minimum dimensions
+            if ($extension !== 'svg') {
+                $dimensions = $asset->dimensions();
+                if (! $dimensions || $dimensions[0] < 512 || $dimensions[1] < 512) {
+                    if ($request->wantsJson()) {
+                        return response()->json(['error' => 'Image must be at least 512x512 pixels'], 422);
+                    }
+
+                    return back()->withErrors(['source_asset' => 'Image must be at least 512x512 pixels']);
+                }
+            }
+
+            // Use absoluteUrl() for remote storage (S3, DO Spaces, etc.)
+            // The action's normalizeSourcePath() will download it to a temp file
+            $sourcePath = $asset->absoluteUrl();
+        }
+
+        $generationOptions = $this->buildGenerationOptions($validated);
+        $generationOptions['source_type'] = $sourceType;
+
+        if ($sourceType === 'emoji') {
+            $generationOptions['source_emoji'] = $validated['source_emoji'];
+        } elseif ($sourceType === 'text') {
+            $generationOptions['source_text'] = $validated['source_text'];
+        }
+
+        $action(
+            sourcePath: $sourcePath,
+            options: $generationOptions
+        );
+
+        $this->saveSettingsToFile([
+            ...$validated,
+            'source_type' => $sourceType,
+            'generated_at' => now()->toIso8601String(),
+        ]);
+
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'Favicons generated successfully!']);
+        }
+
+        return back()->with('success', 'Favicons generated successfully!');
     }
 
     public function preview(): JsonResponse

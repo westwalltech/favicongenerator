@@ -2,6 +2,7 @@
 
 namespace WestWallTech\FaviconGenerator\Actions;
 
+use Illuminate\Support\Facades\Log;
 use Imagick;
 use Intervention\Image\Interfaces\ImageInterface;
 use Intervention\Image\Laravel\Facades\Image;
@@ -45,7 +46,11 @@ class GenerateFavicons
             $formats = $imagick->queryFormats('SVG');
 
             return ! empty($formats);
-        } catch (\Exception) {
+        } catch (\Exception $e) {
+            Log::error('[FaviconGenerator] canProcessSvg: Failed to check Imagick SVG support', [
+                'error' => $e->getMessage(),
+            ]);
+
             return false;
         }
     }
@@ -237,6 +242,12 @@ class GenerateFavicons
 
             return null;
         } catch (\Exception $e) {
+            Log::error('[FaviconGenerator] fetchTwemojiImage: Failed to fetch Twemoji image', [
+                'emoji' => $emoji,
+                'url' => $svgUrl ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
     }
@@ -280,6 +291,12 @@ class GenerateFavicons
 
             return $svgContent !== false ? $svgContent : null;
         } catch (\Exception $e) {
+            Log::error('[FaviconGenerator] fetchTwemojiSvg: Failed to fetch Twemoji SVG', [
+                'emoji' => $emoji,
+                'url' => $svgUrl ?? null,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
     }
@@ -407,6 +424,11 @@ class GenerateFavicons
 
             return $image;
         } catch (\Exception $e) {
+            Log::error('[FaviconGenerator] convertSvgToImage: Failed to convert SVG to image', [
+                'size' => $size,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
     }
@@ -1312,7 +1334,10 @@ class GenerateFavicons
                 }
             }
         } catch (\Exception $e) {
-            // Silently fail and return null
+            Log::error('[FaviconGenerator] resolveAssetUrl: Failed to resolve asset URL', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return null;
